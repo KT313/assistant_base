@@ -1,0 +1,82 @@
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('display-text').innerHTML = "";
+    fetchInitText();
+
+    document.getElementById('user-input').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendUserMsg();
+        }
+    });
+});
+
+function fetchInitText() {
+    fetch('/get_init_text')
+        .then(response => response.json())
+        .then(data => {
+            data.returned_content.forEach(item => {
+                addText(item);
+            });
+        });
+}
+
+function sendUserMsg() {
+    showLoadingAnimation();
+    const userInput = document.getElementById('user-input');
+    const content = userInput.value;
+    var chat = [];
+    chat.push({'role': 'User', 'content': content});
+    addText({'role': 'User', 'content': content});
+    userInput.value = '';
+    
+
+    fetch('/send_user_msg', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({'chat': chat})
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoadingAnimation();
+        console.log(data);
+        if ('returned_content' in data) {
+            data.returned_content.forEach(item => {
+                addText(item);
+            });
+        }
+    });
+}
+
+function addText(msg_dict) {
+    const role = msg_dict.role;
+    const content = msg_dict.content;
+
+    let formattedContent = '';
+    const maxContentWidth = '30vw';
+
+    if (role === 'System') {
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+    } else if (role === 'User') {
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: orange; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+    } else if (role === 'AI') {
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: blue; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+    } else {
+        formattedContent = `${content}<br>`;
+    }
+
+    document.getElementById('display-text').innerHTML += formattedContent;
+
+    if (document.getElementById('display-text').scrollHeight > document.getElementById('display-text').clientHeight) {
+        document.getElementById('display-text').scrollTop = document.getElementById('display-text').scrollHeight;
+    }
+}
+
+function showLoadingAnimation() {
+    document.getElementById('loading-animation').style.removeProperty("display");
+}
+
+function hideLoadingAnimation() {
+    document.getElementById('loading-animation').style.display = "none";
+}

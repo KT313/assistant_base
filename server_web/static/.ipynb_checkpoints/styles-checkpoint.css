@@ -1,0 +1,73 @@
+#display-text {
+    width: 38vw;
+    height: 40vh;
+    border: 1px solid #ccc;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+#user-input {
+    width: 38vw;
+    padding: 5px;
+    
+}
+
+@keyframes spin {
+   0% { transform: translate(4px,38px) scale(0); }
+  25% { transform: translate(4px,38px) scale(0); }
+  50% { transform: translate(4px,38px) scale(1); }
+  75% { transform: translate(38px,38px) scale(1); }
+ 100% { transform: translate(72px,38px) scale(1); }
+}
+@keyframes spin-r {
+   0% { transform: translate(72px,38px) scale(1); }
+ 100% { transform: translate(72px,38px) scale(0); }
+}
+@keyframes spin-c {
+   0% { background: #e15b64; }
+  25% { background: #abbd81; }
+  50% { background: #f8b26a; }
+  75% { background: #f47e60; }
+ 100% { background: #e15b64; }
+}
+.spin div {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transform: translate(38px,38px) scale(1);
+  background: #e15b64;
+  animation: spin 4.166666666666666s infinite cubic-bezier(0,0.5,0.5,1);
+}
+.spin div:nth-child(1) {
+  background: #f47e60;
+  transform: translate(72px,38px) scale(1);
+  animation: spin-r 1.0416666666666665s infinite cubic-bezier(0,0.5,0.5,1), spin-c 4.166666666666666s infinite step-start;
+}
+.spin div:nth-child(2) {
+  animation-delay: -1.0416666666666665s;
+  background: #e15b64;
+}
+.spin div:nth-child(3) {
+  animation-delay: -2.083333333333333s;
+  background: #f47e60;
+}
+.spin div:nth-child(4) {
+  animation-delay: -3.1249999999999996s;
+  background: #f8b26a;
+}
+.spin div:nth-child(5) {
+  animation-delay: -4.166666666666666s;
+  background: #abbd81;
+}
+.spin {
+  margin-left: 8vw;
+  flex-shrink: 0;
+  width: 100px;
+  height: 50px;
+  position: relative;
+  transform: translateZ(0) scale(0.56);
+  backface-visibility: hidden;
+  transform-origin: 0 0;
+}
+.spin div { box-sizing: content-box; }
