@@ -99,6 +99,7 @@ a.clear-chat-button{
  cursor: default;
 }
 a.clear-chat-button span{
+ 
  margin-right: 8px;
  display: block;
  width: 16px;
@@ -148,6 +149,7 @@ a.clear-chat-button:active{
     background-repeat: no-repeat;
     background-size: contain;
     transform: rotate(0deg);
+    user-select: none;
 }
 
 .change-model-button:hover {
