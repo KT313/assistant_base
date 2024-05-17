@@ -6,14 +6,37 @@
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body>
-    <div id="display-text"></div>
-    <div class="spin" id="loading-animation" style="display: none;">
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
+    <div style="display: flex; align-items: start;">
+        <div id="display-text"></div>
+        <nav>
+            <ul style="margin: 0px;">
+                <a class="clear-chat-button" onclick="clearChat()"><span></span>Clear Chat</a>
+                <div class="change-model-button">
+    <select>
+        <option value="" selected disabled hidden>Change Model</option>
+        <option value="">GitHub</option>
+        <option value="">Instagram</option>
+        <option value="">Facebook</option>
+        <option value="">LinkedIn</option>
+        <option value="">Twitter</option>
+        <option value="">Reddit</option>
+    </select>
+</div>
+                
+            </ul>
+        </nav>
+        <div class="add-arrow"></div>
     </div>
-    <input type="text" id="user-input" placeholder="Type your text here...">
+    
+    <div style="display: flex; align-items: center;">
+        <textarea type="text" id="user-input" placeholder="Type your text here..."></textarea>
+        <div class="spin" id="loading-animation" style="display: none;">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+    </div>
 </body>
 </html>

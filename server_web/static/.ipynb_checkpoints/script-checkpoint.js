@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('display-text').innerHTML = "";
+    document.getElementById('display-text').chat = [];
     fetchInitText();
 
     document.getElementById('user-input').addEventListener('keydown', function(event) {
@@ -23,10 +24,8 @@ function fetchInitText() {
 function sendUserMsg() {
     showLoadingAnimation();
     const userInput = document.getElementById('user-input');
-    const content = userInput.value;
-    var chat = [];
-    chat.push({'role': 'User', 'content': content});
-    addText({'role': 'User', 'content': content});
+    addText({'role': 'User', 'content': userInput.value});
+    const chat = document.getElementById('display-text').chat;
     userInput.value = '';
     
 
@@ -53,15 +52,17 @@ function addText(msg_dict) {
     const role = msg_dict.role;
     const content = msg_dict.content;
 
+    document.getElementById('display-text').chat.push(msg_dict);
+
     let formattedContent = '';
     const maxContentWidth = '30vw';
 
     if (role === 'System') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else if (role === 'User') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: orange; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: orange; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else if (role === 'AI') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; flex-shrink: 0; color: blue; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth};">${content}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: blue; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else {
         formattedContent = `${content}<br>`;
     }
@@ -80,3 +81,10 @@ function showLoadingAnimation() {
 function hideLoadingAnimation() {
     document.getElementById('loading-animation').style.display = "none";
 }
+
+function clearChat() {
+    document.getElementById('display-text').innerHTML = "";
+    document.getElementById('display-text').chat = [];
+    fetchInitText();
+}
+
