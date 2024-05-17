@@ -60,9 +60,9 @@ function addText(msg_dict) {
     if (role === 'System') {
         formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else if (role === 'User') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: orange; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: orange; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else if (role === 'AI') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: blue; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: blue; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
     } else {
         formattedContent = `${content}<br>`;
     }
@@ -83,8 +83,16 @@ function hideLoadingAnimation() {
 }
 
 function clearChat() {
+    console.log("clicked clearChat button");
     document.getElementById('display-text').innerHTML = "";
     document.getElementById('display-text').chat = [];
     fetchInitText();
 }
 
+function changeModelOpen() {
+    console.log("changed model");
+}
+
+function moreInfoCheckbox() {
+    console.log("changed moreinfo checkbox");
+}

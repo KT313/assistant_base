@@ -79,8 +79,6 @@
 .spin div { box-sizing: content-box; }
 
 a.clear-chat-button{
- margin-left: 40px;
- margin-top: 15px;
  background: linear-gradient(to right,#3831a2 ,#2368bc);
  background-color: #3831a2;
  color: #fff;
@@ -99,7 +97,6 @@ a.clear-chat-button{
  cursor: default;
 }
 a.clear-chat-button span{
- 
  margin-right: 8px;
  display: block;
  width: 16px;
@@ -119,7 +116,7 @@ a.clear-chat-button:active{
 
 
 .change-model-button {
-    margin-left: 40px;
+    border: 1px solid #00000044;
     margin-top: 15px;
     background: linear-gradient(to right, #3831a2, #2368bc);
     background-color: #3831a2;
@@ -177,3 +174,11 @@ a.clear-chat-button:active{
     z-index: 1;
 }
 
+@import url('https://fonts.googleapis.com/css?family=Quantico');
+#text{
+    font-family: "Quantico", sans-serif;
+    font-variant: small-caps;
+    font-size: 24px;
+    color: #000;
+    text-shadow: #888 1px 1px 10px;
+}
