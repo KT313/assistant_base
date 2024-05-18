@@ -175,10 +175,10 @@ a.clear-chat-button:active{
 }
 
 @import url('https://fonts.googleapis.com/css?family=Quantico');
-#text{
+.text-info{
     font-family: "Quantico", sans-serif;
     font-variant: small-caps;
-    font-size: 24px;
+    font-size: 16px;
     color: #000;
     text-shadow: #888 1px 1px 10px;
 }

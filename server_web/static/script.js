@@ -27,6 +27,12 @@ function sendUserMsg() {
     addText({'role': 'User', 'content': userInput.value});
     const chat = document.getElementById('display-text').chat;
     userInput.value = '';
+    const model_selector = document.getElementById('modelSelector').value;
+    if (model_selector == "default") {
+        model_val = "llama3-llava-next-8b";
+    } else {
+        model_val = model_selector;
+    }
     
 
     fetch('/send_user_msg', {
@@ -34,7 +40,7 @@ function sendUserMsg() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({'chat': chat})
+        body: JSON.stringify({'chat': chat, 'model': model_val})
     })
     .then(response => response.json())
     .then(data => {
@@ -44,6 +50,14 @@ function sendUserMsg() {
             data.returned_content.forEach(item => {
                 addText(item);
             });
+        }
+        if ('info' in data) {
+            document.getElementById('info-vram-used').innerHTML = data.info.mem_used;
+            document.getElementById('info-vram-total').innerHTML = data.info.mem_total;
+            document.getElementById('info-input-tokens').innerHTML = data.info.num_input_tokens;
+            document.getElementById('info-output-tokens').innerHTML = data.info.num_output_tokens;
+            document.getElementById('info-total-time').innerHTML = data.info.total_time_taken;
+            document.getElementById('info-tokens-per-second').innerHTML = data.info.tokens_per_second;
         }
     });
 }
