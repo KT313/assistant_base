@@ -58,7 +58,7 @@
             "name": "Hermes-2-Theta-Llama-3-8B",
             "path": "/home/tobi/ai/models/text_to_text/Hermes-2-Theta-Llama-3-8B",
             "system_prompt": "You are a helpful assistant.",
-            "functions": "";
+            "functions": "",
             "model_on_cuda": 0,
             "token_on_cuda": {
                 "1": 0,

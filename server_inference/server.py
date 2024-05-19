@@ -1,7 +1,7 @@
 import os
 import json
 
-functions = """You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {"type": "function", "function": {"name": "get_stock_fundamentals", "description": "get_stock_fundamentals(symbol: str) -> dict - Get fundamental data for a given stock symbol using yfinance API.\\n\\n    Args:\\n        symbol (str): The stock symbol.\\n\\n    Returns:\\n        dict: A dictionary containing fundamental data.\\n            Keys:\\n                - \'symbol\': The stock symbol.\\n                - \'company_name\': The long name of the company.\\n                - \'sector\': The sector to which the company belongs.\\n                - \'industry\': The industry to which the company belongs.\\n                - \'market_cap\': The market capitalization of the company.\\n                - \'pe_ratio\': The forward price-to-earnings ratio.\\n                - \'pb_ratio\': The price-to-book ratio.\\n                - \'dividend_yield\': The dividend yield.\\n                - \'eps\': The trailing earnings per share.\\n                - \'beta\': The beta value of the stock.\\n                - \'52_week_high\': The 52-week high price of the stock.\\n                - \'52_week_low\': The 52-week low price of the stock.", "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}}, "required": ["symbol"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
+functions = """You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {"type": "function", "function": {"name": "get_web_info", "description": "get_web_info(symbol: str) -> dict - Get web results for a given query.\\n\\n    Args:\\n        query (str): The web search query.\\n\\n    Returns:\\n        dict: A dictionary containing web search results.\\n            Keys:\\n                - \'website\': The first returned website.\\n                - \'website_content\': The content of the website.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}} {"type": "function", "function": {"name": "run_python", "description": "run_python(code: str) -> dict - Returns stdout and stderr from running the provided coda.\\n\\n    Args:\\n        code (str): The python code to run.\\n\\n    Returns:\\n        dict: A dictionary the outputs.\\n            Keys:\\n                - \'stdout\': stdout from running the python code.\\n                - \'stderr\': stderr from running the python code.", "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
 <tool_call>
 {"arguments": <args-dict>, "name": <function-name>}
 </tool_call>"""
@@ -12,7 +12,7 @@ with open(f"config.json", "r") as config_file:
 config_tmp['models']['Hermes-2-Theta-Llama-3-8B']['functions'] = functions
 
 with open(f"config.json", "w") as config_file:
-    config_file.write(json.dumps(config_tmp))
+    config_file.write(json.dumps(config_tmp, indent=4))
 
 
 
@@ -40,7 +40,7 @@ from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
 
 from llama_cpp import Llama
 
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig
 import bitsandbytes, flash_attn
 
 from PIL import Image
@@ -166,6 +166,8 @@ class Sync():
                 chat_string += f"<|im_start|>{entry['role']}\n"
                 chat_string += f"{entry['content']}<|im_end|>\n"
             chat_string += f"<|im_start|>assistant\n"
+
+            print(chat_string, flush=True)
             
             tokens = self.tokenizer(chat_string, return_tensors="pt").input_ids.to(device)
             
@@ -224,9 +226,73 @@ class Sync():
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
 
-            print(args['tokens'], flush=True)
-            generated_ids = self.model.generate(args['tokens'], max_new_tokens=config['max_new_tokens'], temperature=0.8, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id)
-            response = self.tokenizer.decode(generated_ids[0][args['tokens'].shape[-1]:], skip_special_tokens=True, clean_up_tokenization_space=True)
+            # print(args['tokens'], flush=True)
+            original_input_len = args['tokens'].shape[-1]
+
+            for i in range(16):
+            
+                #generated_ids = self.model.generate(args['tokens'], max_new_tokens=8, temperature=0.7, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id, num_beams=6, early_stopping=True)
+                #first_gen_id = generated_ids[0][args['tokens'].shape[-1]:][0:1]
+
+                # Generate the output
+                output = self.model.generate(
+                    args['tokens'],
+                    max_new_tokens=8,
+                    temperature=0.7,
+                    repetition_penalty=1.1,
+                    do_sample=True,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    num_beams=4,
+                    early_stopping=True,
+                    output_scores=True,
+                    return_dict_in_generate=True
+                )
+                
+                # Get the generated token IDs
+                generated_ids = output.sequences
+                
+                # Get the logits for the first predicted token
+                sure_tokens=0
+                had_unsure = False
+                print()
+                for i in range(len(output.scores)):
+                    logits = output.scores[i]
+                    
+                    # Get the top 3 predictions and their probabilities
+                    top_3_probs, top_3_indices = torch.topk(torch.softmax(logits, dim=-1), k=3)
+                    
+                    # Print the top 3 predictions and their probabilities
+                    predicted_tokens = [self.tokenizer.decode(index.item()) for index in top_3_indices[0]]
+                    print(f"token {i}:", top_3_probs[0])
+                    if not had_unsure:
+                        if top_3_probs[0][0].item() >= 0.98:
+                            sure_tokens += 1
+                        else:
+                            had_unsure = True
+                print("sure_tokens:", sure_tokens)
+
+                # Get the first predicted token + more depending on how sure the predictions are
+                first_gen_id = generated_ids[0][args['tokens'].shape[-1]:][0:1+sure_tokens]
+                        
+                
+                
+    
+                print(first_gen_id)
+                print(self.tokenizer.decode(first_gen_id, skip_special_tokens=False, clean_up_tokenization_space=True))
+    
+                args['tokens'] = torch.concatenate((args['tokens'], first_gen_id.unsqueeze(0)), dim=-1)
+                print(args['tokens'].shape)
+
+                if 128003 in first_gen_id.tolist():
+                    break
+
+                print(f"\n\n\ncurrent output:\n{self.tokenizer.decode(generated_ids[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)}\n\n\n")
+
+
+            # generated_ids = self.model.generate(args['tokens'], max_new_tokens=16, temperature=0.7, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id, num_beams=3, early_stopping=True)
+            
+            
+            response = self.tokenizer.decode(generated_ids[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
             self.output_shape = generated_ids[0][args['tokens'].shape[-1]:].shape
             self.returned_content = [response.strip()]
 
@@ -307,12 +373,20 @@ def load_model(model_name, sync):
     if model_name == "Hermes-2-Theta-Llama-3-8B":
         pretrained = config['models'][model_name]['path']
         tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False)
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            #load_in_4bit=True,
+            #bnb_4bit_use_double_quant=True,
+            #bnb_4bit_quant_type="nf4",
+            #bnb_4bit_compute_dtype=torch.bfloat16
+        )
+        
         model = LlamaForCausalLM.from_pretrained(
             pretrained,
-            torch_dtype=torch.float16,
+            # torch_dtype=torch.float16,
             device_map=config['torch_device_map'],
-            load_in_8bit=False,
-            load_in_4bit=False,
+            quantization_config=bnb_config,
             use_flash_attention_2=True
         )
         
