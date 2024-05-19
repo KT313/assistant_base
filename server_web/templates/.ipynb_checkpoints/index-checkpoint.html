@@ -21,7 +21,8 @@
                         <option value="Hermes-2-Theta-Llama-3-8B">Hermes-2-Theta-Llama-3-8B</option>
                     </select>
                 </div><br>
-                <input type="checkbox" id="moreinfo" onchange="moreInfoCheckbox()"><label for="moreinfo">Show more info</label><br>
+                <input type="checkbox" id="moreinfo-checkbox" onchange="moreInfoCheckbox()"><label for="moreinfo-checkbox">Show more info</label><br>
+                <input type="checkbox" id="usefunctions-checkbox" onchange="usefunctionsCheckbox()"><label for="usefunctions-checkbox">Use Functions</label><br>
             </div>
             <br>
             <div id="info" style="margin: 0px; width: 300px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
@@ -33,6 +34,8 @@
                 <span style="width: 140px; display: inline-block;">Total Time: </span><span id="info-total-time">0</span>s<br>
                 </div>
             </div>
+            <br>
+            <textarea type="text" id="manual-system-prompt" placeholder="Type your system prompt here..."></textarea>
         </div>
     </div>
     

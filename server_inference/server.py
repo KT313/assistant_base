@@ -1,5 +1,26 @@
 import os
 import json
+
+functions = """You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {"type": "function", "function": {"name": "get_stock_fundamentals", "description": "get_stock_fundamentals(symbol: str) -> dict - Get fundamental data for a given stock symbol using yfinance API.\\n\\n    Args:\\n        symbol (str): The stock symbol.\\n\\n    Returns:\\n        dict: A dictionary containing fundamental data.\\n            Keys:\\n                - \'symbol\': The stock symbol.\\n                - \'company_name\': The long name of the company.\\n                - \'sector\': The sector to which the company belongs.\\n                - \'industry\': The industry to which the company belongs.\\n                - \'market_cap\': The market capitalization of the company.\\n                - \'pe_ratio\': The forward price-to-earnings ratio.\\n                - \'pb_ratio\': The price-to-book ratio.\\n                - \'dividend_yield\': The dividend yield.\\n                - \'eps\': The trailing earnings per share.\\n                - \'beta\': The beta value of the stock.\\n                - \'52_week_high\': The 52-week high price of the stock.\\n                - \'52_week_low\': The 52-week low price of the stock.", "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}}, "required": ["symbol"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
+<tool_call>
+{"arguments": <args-dict>, "name": <function-name>}
+</tool_call>"""
+
+with open(f"config.json", "r") as config_file:
+    config_tmp = json.loads(config_file.read().strip())
+
+config_tmp['models']['Hermes-2-Theta-Llama-3-8B']['functions'] = functions
+
+with open(f"config.json", "w") as config_file:
+    config_file.write(json.dumps(config_tmp))
+
+
+
+
+
+
+
+
 with open(f"config.json", "r") as config_file:
     config = json.loads(config_file.read().strip())
 
@@ -117,23 +138,36 @@ class Sync():
             question = args['chat'][-1]['content']
             conv.append_message(conv.roles[0], question)
             conv.append_message(conv.roles[1], None)
-            prompt_question = conv.get_prompt()  
+            prompt_question = conv.get_prompt()
 
             self.gen_inputs = {}
             self.gen_inputs['text'] = prompt_question
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
             new_chat = []
-            if "system_prompt" in config['models'][self.current_model]:
+            if args['use_functions'] and "functions" in config['models'][self.current_model]:
+                new_chat.append({'role': 'system', 'content': config['models'][self.current_model]['functions']})
+            elif 'manual_system_prompt' in args and args['manual_system_prompt'].strip() != "":
+                new_chat.append({'role': 'system', 'content': args['manual_system_prompt']})
+            elif "system_prompt" in config['models'][self.current_model]:
                 new_chat.append({'role': 'system', 'content': config['models'][self.current_model]['system_prompt']})
+            
             for entry in args['chat']:
                 if entry['role'] == "User":
                     new_chat.append({'role': 'user', 'content': entry['content']})
                 if entry['role'] == "AI":
                     new_chat.append({'role': 'assistant', 'content': entry['content']})
+
             args['chat'] = new_chat
+
+            chat_string = ""
             
-            tokens = self.tokenizer.apply_chat_template(args['chat'], return_tensors="pt").to(device)
+            for entry in args['chat']:
+                chat_string += f"<|im_start|>{entry['role']}\n"
+                chat_string += f"{entry['content']}<|im_end|>\n"
+            chat_string += f"<|im_start|>assistant\n"
+            
+            tokens = self.tokenizer(chat_string, return_tensors="pt").input_ids.to(device)
             
             self.gen_inputs = {}
             self.gen_inputs['tokens'] = tokens
@@ -189,8 +223,8 @@ class Sync():
             self.input_shape = [1, output['usage']['prompt_tokens']]
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+
             print(args['tokens'], flush=True)
-            print(self.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True), flush=True)
             generated_ids = self.model.generate(args['tokens'], max_new_tokens=config['max_new_tokens'], temperature=0.8, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id)
             response = self.tokenizer.decode(generated_ids[0][args['tokens'].shape[-1]:], skip_special_tokens=True, clean_up_tokenization_space=True)
             self.output_shape = generated_ids[0][args['tokens'].shape[-1]:].shape
@@ -365,7 +399,7 @@ def infer_helper(request_json):
         
 
 
-            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None})
+            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None, 'manual_system_prompt': data['manual_system_prompt'], 'use_functions': data['use_functions']})
             
             if sync.error:
                 return json.dumps({'status': 'error', 'error-info': sync.error_info})

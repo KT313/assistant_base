@@ -27,6 +27,8 @@ function sendUserMsg() {
     addText({'role': 'User', 'content': userInput.value});
     const chat = document.getElementById('display-text').chat;
     userInput.value = '';
+    const manualSystemPrompt = document.getElementById('manual-system-prompt');
+    const usefunctions = document.getElementById('usefunctions-checkbox');
     const model_selector = document.getElementById('modelSelector').value;
     if (model_selector == "default") {
         model_val = "llama3-llava-next-8b";
@@ -40,7 +42,7 @@ function sendUserMsg() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({'chat': chat, 'model': model_val})
+        body: JSON.stringify({'chat': chat, 'model': model_val, 'manual_system_prompt': manualSystemPrompt.value, 'use_functions': usefunctions.checked})
     })
     .then(response => response.json())
     .then(data => {
@@ -64,7 +66,12 @@ function sendUserMsg() {
 
 function addText(msg_dict) {
     const role = msg_dict.role;
-    const content = msg_dict.content;
+    var content = msg_dict.content;
+
+    content = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    content = content.replace(/\n/g, '<br>');
+
+    console.log(content);
 
     document.getElementById('display-text').chat.push(msg_dict);
 
@@ -72,11 +79,11 @@ function addText(msg_dict) {
     const maxContentWidth = '30vw';
 
     if (role === 'System') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: gold; font-weight: bold;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content}</span></div>`;
     } else if (role === 'User') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: orange; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: orange; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content}</span></div>`;
     } else if (role === 'AI') {
-        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: blue; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content.replace(/\n/g, '<br>')}</span></div>`;
+        formattedContent = `<div style="display: flex;"><span style="width: 5vw; min-width: 60px; max-width: 80px; flex-shrink: 0; color: blue; font-weight: bold; text-shadow: #444 1px 1px 3px;">${role}:</span><span style="margin-left: 3vw; flex-shrink: 0; width: ${maxContentWidth}; min-width: 400px;">${content}</span></div>`;
     } else {
         formattedContent = `${content}<br>`;
     }
@@ -109,4 +116,8 @@ function changeModelOpen() {
 
 function moreInfoCheckbox() {
     console.log("changed moreinfo checkbox");
+}
+
+function usefunctionsCheckbox() {
+    console.log("changed usefunctions checkbox");
 }
