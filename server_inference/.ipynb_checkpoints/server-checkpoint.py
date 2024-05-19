@@ -19,6 +19,9 @@ from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
 
 from llama_cpp import Llama
 
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM
+import bitsandbytes, flash_attn
+
 from PIL import Image
 import requests
 import torch
@@ -38,6 +41,9 @@ class Sync():
         # model
         # chat
         # image
+
+        args['chat'] = [chat for chat in args['chat'] if chat['role'] != "System"]
+        
         self.error = False
         self.error_info = ""
 
@@ -100,27 +106,47 @@ class Sync():
                 self.gen_inputs['tokens'] = tokens
                 self.input_shape = self.gen_inputs['tokens'].shape
 
-        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S":
-                conv_template = "llava_llama_3"
-                conv = copy.deepcopy(conv_templates[conv_template])
-                for entry in args['chat'][:-1]:
-                    if entry['role'] == "User":
-                        conv.append_message(conv.roles[0], entry['content'])
-                    elif entry['role'] == "AI":
-                        conv.append_message(conv.roles[1], entry['content'])
-                question = args['chat'][-1]['content']
-                conv.append_message(conv.roles[0], question)
-                conv.append_message(conv.roles[1], None)
-                prompt_question = conv.get_prompt()  
+        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
+            conv_template = "llama_3_70b"
+            conv = copy.deepcopy(conv_templates[conv_template])
+            for entry in args['chat'][:-1]:
+                if entry['role'] == "User":
+                    conv.append_message(conv.roles[0], entry['content'])
+                elif entry['role'] == "AI":
+                    conv.append_message(conv.roles[1], entry['content'])
+            question = args['chat'][-1]['content']
+            conv.append_message(conv.roles[0], question)
+            conv.append_message(conv.roles[1], None)
+            prompt_question = conv.get_prompt()  
 
-                self.gen_inputs = {}
-                self.gen_inputs['text'] = prompt_question
+            self.gen_inputs = {}
+            self.gen_inputs['text'] = prompt_question
+
+        if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+            new_chat = []
+            if "system_prompt" in config['models'][self.current_model]:
+                new_chat.append({'role': 'system', 'content': config['models'][self.current_model]['system_prompt']})
+            for entry in args['chat']:
+                if entry['role'] == "User":
+                    new_chat.append({'role': 'user', 'content': entry['content']})
+                if entry['role'] == "AI":
+                    new_chat.append({'role': 'assistant', 'content': entry['content']})
+            args['chat'] = new_chat
+            
+            tokens = self.tokenizer.apply_chat_template(args['chat'], return_tensors="pt").to(device)
+            
+            self.gen_inputs = {}
+            self.gen_inputs['tokens'] = tokens
+            self.input_shape = self.gen_inputs['tokens'].shape
+
+
+
+
 
         self.gen_inputs['model'] = args['model']
 
     def generate(self):
         args = self.gen_inputs
-        print(f"\n\ndevices:\nmodel: {next(self.model.parameters()).device}\ninput: {args['tokens'].device}")
         # args should contain:
         # model
         # gen_inputs
@@ -128,8 +154,6 @@ class Sync():
         # llama3-llava-next-8b
         # print(json.dumps(args, indent=4), flush=True)
         if args['model'] == "llama3-llava-next-8b":
-            # print("a")
-            # with image
             if args['image_tensor'] != None:  
                 pass
             else:
@@ -137,7 +161,7 @@ class Sync():
                     args['tokens'],
                     do_sample=False,
                     temperature=0,
-                    max_new_tokens=256,
+                    max_new_tokens=config['max_new_tokens'],
                 )
 
             self.output_shape = cont.shape
@@ -147,26 +171,30 @@ class Sync():
 
         if args['model'] == "paligemma-3b-mix-448":
             input_len = args['tokens']['input_ids'].shape[-1]
-            generation = self.model.generate(**args['tokens'], max_new_tokens=100, do_sample=False)
+            generation = self.model.generate(**args['tokens'], max_new_tokens=config['max_new_tokens'], do_sample=False)
             self.output_shape = generation.shape
             generation = generation[0][input_len:]
             text_outputs = [self.processor.decode(generation, skip_special_tokens=True)]
             self.returned_content = [entry.strip() for entry in text_outputs]
 
-        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S":
+        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
             output = self.model(
               args['text'], # Prompt
-              max_tokens=None, # Generate up to 32 tokens, set to None to generate up to the end of the context window
+              max_tokens=config['max_new_tokens'], # Generate up to 32 tokens, set to None to generate up to the end of the context window
               stop=["<|eot_id|>", "<|end_of_text|>"], # Stop generating just before the model would generate a new question
               echo=False # Echo the prompt back in the output
             ) # Generate a completion, can also call create_completion
-            self.returned_content = output['choices'][0]['text']
-            self.output_shape = [1, output['choices'][0]['usage']['completion_tokens']]
-            self.input_shape = [1, output['choices'][0]['usage']['prompt_tokens']]
+            self.returned_content = [out['text'] for out in output['choices']]
+            self.output_shape = [1, output['usage']['completion_tokens']]
+            self.input_shape = [1, output['usage']['prompt_tokens']]
 
-
-
-
+        if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+            print(args['tokens'], flush=True)
+            print(self.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True), flush=True)
+            generated_ids = self.model.generate(args['tokens'], max_new_tokens=config['max_new_tokens'], temperature=0.8, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id)
+            response = self.tokenizer.decode(generated_ids[0][args['tokens'].shape[-1]:], skip_special_tokens=True, clean_up_tokenization_space=True)
+            self.output_shape = generated_ids[0][args['tokens'].shape[-1]:].shape
+            self.returned_content = [response.strip()]
 
 
 
@@ -184,6 +212,12 @@ class Sync():
 sync = Sync()
 
 def load_model(model_name, sync):
+    try:
+        del sync.model
+        gc.collect()
+    except:
+        pass
+        
     if model_name == "llama3-llava-next-8b":
         pretrained = config['models'][model_name]['path']
         model_name_for_loading = "llava_llama3"
@@ -219,9 +253,45 @@ def load_model(model_name, sync):
             n_gpu_layers=-1, # Uncomment to use GPU acceleration
             # seed=1337, # Uncomment to set a specific seed
             n_ctx=1024, # Uncomment to increase the context window
+            flash_attn=True,
         )
         sync.model = model
         sync.current_model = model_name
+
+    if model_name == "Meta-Llama-3-70B-Instruct-IQ1_M":
+        pretrained = config['models'][model_name]['path']
+        model = Llama(
+            model_path=pretrained,
+            n_gpu_layers=-1, # Uncomment to use GPU acceleration
+            # seed=1337, # Uncomment to set a specific seed
+            n_ctx=1024, # Uncomment to increase the context window
+            flash_attn=True,
+        )
+        sync.model = model
+        sync.current_model = model_name
+
+    if model_name == "Hermes-2-Theta-Llama-3-8B":
+        pretrained = config['models'][model_name]['path']
+        tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False)
+        model = LlamaForCausalLM.from_pretrained(
+            pretrained,
+            torch_dtype=torch.float16,
+            device_map=config['torch_device_map'],
+            load_in_8bit=False,
+            load_in_4bit=False,
+            use_flash_attention_2=True
+        )
+        
+        sync.tokenizer = tokenizer
+        sync.model = model
+        sync.current_model = model_name
+
+
+
+
+
+
+
         
 
 # load_model("llama3-llava-next-8b", sync)

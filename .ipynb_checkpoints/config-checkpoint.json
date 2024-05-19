@@ -39,8 +39,38 @@
             "context_len": "trained for 8192, set to 1024 for now for better speed due to higher memory usage with higher context length",
             "input_text": "required",
             "input_image": "no"
+        },
+        "Meta-Llama-3-70B-Instruct-IQ1_M": {
+            "name": "Meta-Llama-3-70B-Instruct-IQ1_M",
+            "path": "/home/tobi/ai/models/text_to_text/Meta-Llama-3-70B-Instruct-IQ1_M.gguf",
+            "model_on_cuda": 0,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "context_len": "trained for 8192, set to 1024 for now for better speed due to higher memory usage with higher context length",
+            "input_text": "required",
+            "input_image": "no"
+        },
+        "Hermes-2-Theta-Llama-3-8B": {
+            "name": "Hermes-2-Theta-Llama-3-8B",
+            "path": "/home/tobi/ai/models/text_to_text/Hermes-2-Theta-Llama-3-8B",
+            "system_prompt": "You are a helpful assistant.",
+            "model_on_cuda": 0,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "context_len": 0,
+            "input_text": "required",
+            "input_image": "no"
         }
     },
+    "max_new_tokens": 64,
     "torch_device": "cuda",
     "torch_device_map": "cuda",
     "torch_cuda_garbage_collection_threshold": 0.01
