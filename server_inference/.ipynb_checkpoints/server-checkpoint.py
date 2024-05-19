@@ -1,8 +1,12 @@
 import os
+import json
+with open(f"config.json", "r") as config_file:
+    config = json.loads(config_file.read().strip())
+
 # garbage_collection_threshold between 0 and 1 in % of mem
 # backend native or cudaMallocAsync
 # PYTORCH_CUDA_ALLOC_CONF=<option>:<value>,<option2>:<value2>...
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "garbage_collection_threshold:0.01"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = f"garbage_collection_threshold:{config['torch_cuda_garbage_collection_threshold']}"
 
 import warnings
 
@@ -13,17 +17,17 @@ from conversation import conv_templates, SeparatorStyle
 
 from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
 
+from llama_cpp import Llama
+
 from PIL import Image
 import requests
 import torch
 import copy
-import json
 import time
 import gc
 
-device = "cuda"
-device_map = "auto"
-url = "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
+device = config['torch_device']
+device_map = config['torch_device_map']
 
 class Sync():
     def __init__(self):
@@ -34,12 +38,14 @@ class Sync():
         # model
         # chat
         # image
+        self.error = False
+        self.error_info = ""
 
         # check if model needs to be changed
         print(args['model'], self.current_model, flush=True)
         if args['model'] != self.current_model:
             load_model(args['model'], self)
-        
+
         if args['model'] == "llama3-llava-next-8b":
             conv_template = "llava_llama_3"
             conv = copy.deepcopy(conv_templates[conv_template])
@@ -60,6 +66,7 @@ class Sync():
                 self.gen_inputs['tokens'] = tokens
                 self.gen_inputs['image_tensor'] = None
                 self.gen_inputs['image_sizes'] = None
+                self.input_shape = self.gen_inputs['tokens'].shape
             
             else:
                 image = Image.open(args['image'])
@@ -70,58 +77,92 @@ class Sync():
                 conv.append_message(conv.roles[0], question)
                 conv.append_message(conv.roles[1], None)
                 prompt_question = conv.get_prompt()                
-                tokens = tokenizer_image_token(prompt_question, sync.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(device)
+                tokens = tokenizer_image_token(prompt_question, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(device)
                 image_sizes = [image.size]
 
                 self.gen_inputs = {}
                 self.gen_inputs['tokens'] = tokens
                 self.gen_inputs['image_tensor'] = image_tensor
                 self.gen_inputs['image_sizes'] = image_sizes
+                self.input_shape = self.gen_inputs['tokens'].shape
                 
             
         if args['model'] == "paligemma-3b-mix-448":
             if args['image'] == None:
-                return {'error': 'error', 'error-info':'paligemma-3b-mix-448 only works if an image is provided'}
+                self.error = True
+                self.error_info = "paligemma-3b-mix-448 only works if an image is provided"
+                return None
             else:
                 prompt = args['chat'][-1]['content']
                 tokens = self.processor(text=prompt, images=image, return_tensors="pt").to(model.device)
 
                 self.gen_inputs = {}
                 self.gen_inputs['tokens'] = tokens
+                self.input_shape = self.gen_inputs['tokens'].shape
 
-        return self.gen_inputs
+        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S":
+                conv_template = "llava_llama_3"
+                conv = copy.deepcopy(conv_templates[conv_template])
+                for entry in args['chat'][:-1]:
+                    if entry['role'] == "User":
+                        conv.append_message(conv.roles[0], entry['content'])
+                    elif entry['role'] == "AI":
+                        conv.append_message(conv.roles[1], entry['content'])
+                question = args['chat'][-1]['content']
+                conv.append_message(conv.roles[0], question)
+                conv.append_message(conv.roles[1], None)
+                prompt_question = conv.get_prompt()  
 
-    def generate(self, args):
+                self.gen_inputs = {}
+                self.gen_inputs['text'] = prompt_question
+
+        self.gen_inputs['model'] = args['model']
+
+    def generate(self):
+        args = self.gen_inputs
+        print(f"\n\ndevices:\nmodel: {next(self.model.parameters()).device}\ninput: {args['tokens'].device}")
         # args should contain:
         # model
         # gen_inputs
 
         # llama3-llava-next-8b
+        # print(json.dumps(args, indent=4), flush=True)
         if args['model'] == "llama3-llava-next-8b":
+            # print("a")
             # with image
-            if args['gen_inputs']['image_tensor'] != None:  
+            if args['image_tensor'] != None:  
                 pass
             else:
-                cont = sync.model.generate(
-                    args['gen_inputs']['tokens'],
+                cont = self.model.generate(
+                    args['tokens'],
                     do_sample=False,
                     temperature=0,
                     max_new_tokens=256,
                 )
 
-            output_shape = cont.shape
+            self.output_shape = cont.shape
             text_outputs = self.tokenizer.batch_decode(cont, skip_special_tokens=True)
-            returned_content = [entry.strip() for entry in text_outputs]
+            self.returned_content = [entry.strip() for entry in text_outputs]
+            print("\n\nself.returned_content:", self.returned_content, "\n\n")
 
         if args['model'] == "paligemma-3b-mix-448":
-            input_len = args['gen_inputs']['tokens']['input_ids'].shape[-1]
-            generation = self.model.generate(**args['gen_inputs']['tokens'], max_new_tokens=100, do_sample=False)
-            output_shape = generation.shape
+            input_len = args['tokens']['input_ids'].shape[-1]
+            generation = self.model.generate(**args['tokens'], max_new_tokens=100, do_sample=False)
+            self.output_shape = generation.shape
             generation = generation[0][input_len:]
             text_outputs = [self.processor.decode(generation, skip_special_tokens=True)]
-            returned_content = [entry.strip() for entry in text_outputs]
-        
-        return returned_content, output_shape
+            self.returned_content = [entry.strip() for entry in text_outputs]
+
+        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S":
+            output = self.model(
+              args['text'], # Prompt
+              max_tokens=None, # Generate up to 32 tokens, set to None to generate up to the end of the context window
+              stop=["<|eot_id|>", "<|end_of_text|>"], # Stop generating just before the model would generate a new question
+              echo=False # Echo the prompt back in the output
+            ) # Generate a completion, can also call create_completion
+            self.returned_content = output['choices'][0]['text']
+            self.output_shape = [1, output['choices'][0]['usage']['completion_tokens']]
+            self.input_shape = [1, output['choices'][0]['usage']['prompt_tokens']]
 
 
 
@@ -144,7 +185,7 @@ sync = Sync()
 
 def load_model(model_name, sync):
     if model_name == "llama3-llava-next-8b":
-        pretrained = "../../../models/multimodal/llama3-llava-next-8b"
+        pretrained = config['models'][model_name]['path']
         model_name_for_loading = "llava_llama3"
         tokenizer, model, image_processor, max_length = load_pretrained_model(pretrained, None, model_name_for_loading, device_map=device_map) # Add any other thing you want to pass in llava_model_args
         
@@ -158,7 +199,7 @@ def load_model(model_name, sync):
         sync.current_model = model_name
 
     if model_name == "paligemma-3b-mix-448":
-        pretrained = "../../../models/multimodal/paligemma-3b-mix-448"
+        pretrained = config['models'][model_name]['path']
         model = PaliGemmaForConditionalGeneration.from_pretrained(
             pretrained,
             torch_dtype=torch.bfloat16,
@@ -168,6 +209,17 @@ def load_model(model_name, sync):
         processor = AutoProcessor.from_pretrained(pretrained)
 
         sync.processor = processor
+        sync.model = model
+        sync.current_model = model_name
+
+    if model_name == "Meta-Llama-3-70B-Instruct-IQ2_S":
+        pretrained = config['models'][model_name]['path']
+        model = Llama(
+            model_path=pretrained,
+            n_gpu_layers=-1, # Uncomment to use GPU acceleration
+            # seed=1337, # Uncomment to set a specific seed
+            n_ctx=1024, # Uncomment to increase the context window
+        )
         sync.model = model
         sync.current_model = model_name
         
@@ -243,19 +295,22 @@ def infer_helper(request_json):
         
 
 
-            gen_inputs = sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None})
-            print("gen_inputs:", gen_inputs, flush=True)
-            if "error" in gen_inputs:
-                return json.dumps({'status': 'error', 'error-info': gen_inputs['error-info']})
+            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None})
+            
+            if sync.error:
+                return json.dumps({'status': 'error', 'error-info': sync.error_info})
             start_time_inference = time.time()
-            gen_outputs, output_shape = sync.generate({'model': data['model'], 'gen_inputs': gen_inputs})
+            sync.generate()
+            
+            gen_outputs, output_shape, input_shape = sync.returned_content, sync.output_shape, sync.input_shape
+            
             print("gen_outputs:", gen_outputs, flush=True)
 
             
         
             # TODO add info about num input tokens, output tokens, tokens/s speed
             num_input_tokens = 1
-            for dim_size in gen_inputs['tokens'].shape:
+            for dim_size in input_shape:
                 num_input_tokens *= dim_size
             num_output_tokens = 1
             for dim_size in output_shape:

@@ -1,0 +1,47 @@
+{
+    "models": {
+        "llama3-llava-next-8b": {
+            "name": "llama3-llava-next-8b",
+            "path": "/home/tobi/ai/models/multimodal/llama3-llava-next-8b",
+            "model_on_cuda": 16709526528,
+            "token_on_cuda": {
+                "1": 9428992,
+                "10": 17608192,
+                "100": 99400704,
+                "1000": 921989120
+            },
+            "input_text": "not tested",
+            "input_image": "optional"
+        },
+        "paligemma-3b-mix-448": {
+            "name": "paligemma-3b-mix-448",
+            "path": "/home/tobi/ai/models/multimodal/paligemma-3b-mix-448",
+            "model_on_cuda": 5861250560,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "input_text": "required",
+            "input_image": "required"
+        },
+        "Meta-Llama-3-70B-Instruct-IQ2_S": {
+            "name": "Meta-Llama-3-70B-Instruct-IQ2_S",
+            "path": "/home/tobi/ai/models/text_to_text/Meta-Llama-3-70B-Instruct-IQ2_S.gguf",
+            "model_on_cuda": "22231908352 for context 512, 23739760640 for context 4096",
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": "~492830720",
+                "1000": "~522190848 context 4096"
+            },
+            "context_len": "trained for 8192, set to 1024 for now for better speed due to higher memory usage with higher context length",
+            "input_text": "required",
+            "input_image": "no"
+        }
+    },
+    "torch_device": "cuda",
+    "torch_device_map": "cuda",
+    "torch_cuda_garbage_collection_threshold": 0.01
+}
