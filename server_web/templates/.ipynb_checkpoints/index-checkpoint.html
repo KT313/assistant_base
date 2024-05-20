@@ -13,12 +13,12 @@
                 <a class="clear-chat-button" onclick="clearChat()"><span></span>Clear Chat</a><br>
                 <div class="change-model-button">
                     <select id="modelSelector" onchange="changeModelOpen()">
-                        <option value="llama3-llava-next-8b">Change Model</option>
+                        <option value="Hermes-2-Theta-Llama-3-8B">Change Model</option>
+                        <option value="Hermes-2-Theta-Llama-3-8B">Hermes-2-Theta-Llama-3-8B</option>
                         <option value="llama3-llava-next-8b">Llama3-llava-next-8b</option>
                         <option value="paligemma-3b-mix-448">paligemma-3b-mix-448</option>
                         <option value="Meta-Llama-3-70B-Instruct-IQ2_S">Llama-3-70B-Instruct-IQ2_S</option>
                         <option value="Meta-Llama-3-70B-Instruct-IQ1_M">Llama-3-70B-Instruct-IQ1_M</option>
-                        <option value="Hermes-2-Theta-Llama-3-8B">Hermes-2-Theta-Llama-3-8B</option>
                     </select>
                 </div><br>
                 <input type="checkbox" id="moreinfo-checkbox" onchange="moreInfoCheckbox()"><label for="moreinfo-checkbox">Show more info</label><br>
@@ -35,7 +35,13 @@
                 </div>
             </div>
             <br>
-            <textarea type="text" id="manual-system-prompt" placeholder="Type your system prompt here..."></textarea>
+            <textarea type="text" id="manual-system-prompt" placeholder="Type your system prompt here..."></textarea><br>
+            
+            <textarea type="text" id="max_num_beams" placeholder="max_num_beams (default 4)">4</textarea><br>
+            <textarea type="text" id="depth_beams" placeholder="depth_beams max_num_beams (default 8)">8</textarea><br>
+            <textarea type="text" id="min_conf_for_sure" placeholder="min_conf_for_sure max_num_beams (default 0.98)">0.95</textarea><br>
+            <textarea type="text" id="min_conf_for_consider" placeholder="min_conf_for_consider max_num_beams (default 0.01)">0.01</textarea><br>
+            <textarea type="text" id="prob_sum_for_search" placeholder="prob_sum_for_search max_num_beams (default 0.98)">0.95</textarea><br>
         </div>
     </div>
     

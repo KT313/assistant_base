@@ -173,6 +173,7 @@ class Sync():
             
             self.gen_inputs = {}
             self.gen_inputs['tokens'] = tokens
+            self.gen_inputs['beam_config'] = args['beam_config']
             self.input_shape = self.gen_inputs['tokens'].shape
 
 
@@ -242,7 +243,7 @@ class Sync():
             prediction_paths_probs.append([considered_tokens_probs[i]]+highest_path_probs)
             prediction_paths_indices.append([considered_tokens_indices[i]]+highest_path_indices)
 
-        print("paths total probs:", [round(entry, 3) for entry in total_probs])
+        print("paths total probs:", [round(entry, 6) for entry in total_probs])
 
         best_beam = max(enumerate(total_probs),key=lambda x: x[1])[0]
         # print("-> best beam:", best_beam)
@@ -301,11 +302,11 @@ class Sync():
 
             generated_tokens = 0
 
-            max_num_beams = 4
-            depth_beams = 8
-            min_conf_for_sure = 0.98
-            min_conf_for_consider = 0.01
-            prob_sum_for_search = 0.99
+            max_num_beams = int(args['beam_config']['max_num_beams'].strip())
+            depth_beams = int(args['beam_config']['depth_beams'].strip())
+            min_conf_for_sure = float(args['beam_config']['min_conf_for_sure'].strip())
+            min_conf_for_consider = float(args['beam_config']['min_conf_for_consider'].strip())
+            prob_sum_for_search = float(args['beam_config']['prob_sum_for_search'].strip())
 
             args['max_num_beams'] = max_num_beams
             args['depth_beams'] = depth_beams
@@ -350,8 +351,11 @@ class Sync():
                 considered_tokens_probs = []
                 considered_tokens_indices = []
                 for i in range(max_num_beams):
-                    considered_tokens_probs.append(probabilities[0].tolist()[i])
-                    considered_tokens_indices.append(indices[0].tolist()[i])
+                    if probabilities[0].tolist()[i] >= args['min_conf_for_consider']:
+                        if step == 0 and indices[0].tolist()[i] == 128003:
+                            continue
+                        considered_tokens_probs.append(probabilities[0].tolist()[i])
+                        considered_tokens_indices.append(indices[0].tolist()[i])
                     if sum(considered_tokens_probs) >= prob_sum_for_search:
                         break
                 # print(f"considered tokens:\n{[round(entry, 5) for entry in considered_tokens_probs]} (sum: {round(sum(considered_tokens_probs), 5)})\n{considered_tokens_indices}")
@@ -399,7 +403,7 @@ class Sync():
             print("\n\n\n")
 
             response = self.tokenizer.decode(args['tokens'][0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
-            self.output_shape = args['tokens'][original_input_len:].shape
+            self.output_shape = args['tokens'][0][original_input_len:].shape
             self.returned_content = [response.strip()]
 
 
@@ -580,7 +584,7 @@ def infer_helper(request_json):
         
 
 
-            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None, 'manual_system_prompt': data['manual_system_prompt'], 'use_functions': data['use_functions']})
+            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None, 'manual_system_prompt': data['manual_system_prompt'], 'use_functions': data['use_functions'], 'beam_config': data['beam_config']})
             
             if sync.error:
                 return json.dumps({'status': 'error', 'error-info': sync.error_info})
