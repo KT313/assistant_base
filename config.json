@@ -71,7 +71,7 @@
             "input_image": "no"
         }
     },
-    "max_new_tokens": 64,
+    "max_new_tokens": 1024,
     "torch_device": "cuda",
     "torch_device_map": "cuda",
     "torch_cuda_garbage_collection_threshold": 0.01

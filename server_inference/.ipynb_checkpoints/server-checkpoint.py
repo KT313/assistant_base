@@ -181,6 +181,79 @@ class Sync():
 
         self.gen_inputs['model'] = args['model']
 
+
+
+    def get_best_path(self, args, considered_tokens_probs, considered_tokens_indices):
+        total_probs  = []
+        prediction_paths_probs = []
+        prediction_paths_indices = []
+
+        skip_path = []
+
+        batched_input_tokens = []
+        
+        for i in range(len(considered_tokens_probs)):
+            batched_input_tokens.append(self.tokenizer.decode(torch.concatenate((args['tokens'], torch.tensor([[considered_tokens_indices[i]]]).to(device)), dim=-1)[0], skip_special_tokens=False, clean_up_tokenization_space=True))
+
+        # print(batched_input_tokens)
+        batched_input_tokens = self.tokenizer(batched_input_tokens, return_tensors="pt")
+        # print(batched_input_tokens)
+        # batched_input_masks = torch.stack(batched_input_masks).to(device)
+
+        #batched_input_tokens = torch.concatenate((args['tokens'].repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices).unsqueeze(1).to(device)), dim=-1)
+        #batched_input_masks = torch.ones_like(batched_input_tokens).to(device)
+                
+            
+        beam_output = self.model.generate(
+            batched_input_tokens.input_ids.to(device),
+            attention_mask = batched_input_tokens.attention_mask.to(device),
+            max_new_tokens=args['depth_beams'],
+            temperature=1.0,
+            repetition_penalty=1.1,
+            do_sample=False,
+            # early_stopping=True,
+            eos_token_id=self.tokenizer.eos_token_id,
+            output_scores=True,
+            return_dict_in_generate=True,
+            pad_token_id = 128003
+        )
+        # print(beam_output)
+
+        for i in range(len(considered_tokens_probs)):
+            # case considered token is stop token:
+            if considered_tokens_indices[i] == 128003:
+                total_probs.append(considered_tokens_probs[i])
+                prediction_paths_probs.append([considered_tokens_probs[i]])
+                prediction_paths_indices.append([considered_tokens_indices[i]])
+                skip_path.append(i)
+                continue
+                
+            highest_path_probs = []
+            highest_path_indices = []
+            for token_num in range(len(beam_output.scores)):
+                beam_probabilities, beam_indices = torch.topk(torch.softmax(beam_output.scores[token_num][i], dim=-1), k=args['max_num_beams'])
+                # print(beam_probabilities, beam_indices)
+                highest_path_probs.append(beam_probabilities.tolist()[0])
+                highest_path_indices.append(beam_indices.tolist()[0])
+            total_prob = considered_tokens_probs[i]
+            for a in highest_path_probs:
+                total_prob *= a
+            total_probs.append(total_prob)
+            prediction_paths_probs.append([considered_tokens_probs[i]]+highest_path_probs)
+            prediction_paths_indices.append([considered_tokens_indices[i]]+highest_path_indices)
+
+        print("paths total probs:", [round(entry, 3) for entry in total_probs])
+
+        best_beam = max(enumerate(total_probs),key=lambda x: x[1])[0]
+        # print("-> best beam:", best_beam)
+
+        # print("best beam prediction path:", [round(entry, 3) for entry in prediction_paths_probs[best_beam]], prediction_paths_indices[best_beam], self.tokenizer.decode(prediction_paths_indices[best_beam], skip_special_tokens=False, clean_up_tokenization_space=True))
+        # print("\n\n\n")
+
+        return prediction_paths_probs[best_beam], prediction_paths_indices[best_beam]
+
+    
+
     def generate(self):
         args = self.gen_inputs
         # args should contain:
@@ -226,75 +299,109 @@ class Sync():
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
 
-            # print(args['tokens'], flush=True)
+            generated_tokens = 0
+
+            max_num_beams = 4
+            depth_beams = 8
+            min_conf_for_sure = 0.98
+            min_conf_for_consider = 0.01
+            prob_sum_for_search = 0.99
+
+            args['max_num_beams'] = max_num_beams
+            args['depth_beams'] = depth_beams
+            args['min_conf_for_sure'] = min_conf_for_sure
+            args['min_conf_for_consider'] = min_conf_for_consider
+            args['prob_sum_for_search'] = prob_sum_for_search
+
             original_input_len = args['tokens'].shape[-1]
+            attn_mask = torch.ones_like(args['tokens']).to(device)
 
-            for i in range(16):
+            num_beams_this_run = max_num_beams
+
+            print("input:", self.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True))
             
-                #generated_ids = self.model.generate(args['tokens'], max_new_tokens=8, temperature=0.7, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id, num_beams=6, early_stopping=True)
-                #first_gen_id = generated_ids[0][args['tokens'].shape[-1]:][0:1]
+            for step in range(config['max_new_tokens']):
 
-                # Generate the output
+                # custom beam search
+                # print("num_beams:", num_beams_this_run)
+                
                 output = self.model.generate(
                     args['tokens'],
-                    max_new_tokens=8,
-                    temperature=0.7,
+                    attention_mask = attn_mask,
+                    max_new_tokens=1,
+                    temperature=1.0,
                     repetition_penalty=1.1,
-                    do_sample=True,
+                    do_sample=False,
                     eos_token_id=self.tokenizer.eos_token_id,
-                    num_beams=4,
-                    early_stopping=True,
                     output_scores=True,
-                    return_dict_in_generate=True
+                    return_dict_in_generate=True,
+                    pad_token_id = 128003
                 )
-                
-                # Get the generated token IDs
-                generated_ids = output.sequences
-                
-                # Get the logits for the first predicted token
-                sure_tokens=0
-                had_unsure = False
-                print()
-                for i in range(len(output.scores)):
-                    logits = output.scores[i]
-                    
-                    # Get the top 3 predictions and their probabilities
-                    top_3_probs, top_3_indices = torch.topk(torch.softmax(logits, dim=-1), k=3)
-                    
-                    # Print the top 3 predictions and their probabilities
-                    predicted_tokens = [self.tokenizer.decode(index.item()) for index in top_3_indices[0]]
-                    print(f"token {i}:", top_3_probs[0])
-                    if not had_unsure:
-                        if top_3_probs[0][0].item() >= 0.98:
-                            sure_tokens += 1
-                        else:
-                            had_unsure = True
-                print("sure_tokens:", sure_tokens)
-
-                # Get the first predicted token + more depending on how sure the predictions are
-                first_gen_id = generated_ids[0][args['tokens'].shape[-1]:][0:1+sure_tokens]
-                        
-                
-                
     
-                print(first_gen_id)
-                print(self.tokenizer.decode(first_gen_id, skip_special_tokens=False, clean_up_tokenization_space=True))
+                # print("\n\n\n")
+                # print(output)
+                # print()
+                probabilities, indices = torch.topk(torch.softmax(output.scores[0], dim=-1), k=8)
+                # print(" | ".join([str(round(entry, 5)).ljust(10) for entry in probabilities[0].tolist()]))
+                # print(" | ".join([self.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(10) for entry in indices[0].tolist()]))
+                # print("top token prob:", probabilities[0].tolist()[0])
+                # print("top token index:", indices[0].tolist()[0], f"   (decoded: {self.tokenizer.decode(indices[0].tolist()[0], skip_special_tokens=False, clean_up_tokenization_space=True).strip()})")
+                # print()
+                considered_tokens_probs = []
+                considered_tokens_indices = []
+                for i in range(max_num_beams):
+                    considered_tokens_probs.append(probabilities[0].tolist()[i])
+                    considered_tokens_indices.append(indices[0].tolist()[i])
+                    if sum(considered_tokens_probs) >= prob_sum_for_search:
+                        break
+                # print(f"considered tokens:\n{[round(entry, 5) for entry in considered_tokens_probs]} (sum: {round(sum(considered_tokens_probs), 5)})\n{considered_tokens_indices}")
+                # print(f"-> using {len(considered_tokens_probs)} beams")
+                # for all considered tokens, follow their highest prob path and get the total prob
     
-                args['tokens'] = torch.concatenate((args['tokens'], first_gen_id.unsqueeze(0)), dim=-1)
-                print(args['tokens'].shape)
+                best_path_probs, best_path_indices = self.get_best_path(args, considered_tokens_probs, considered_tokens_indices)
+    
+                tokens_to_add = [best_path_indices[0]] # at least at the init token for the best path
+                additional_sure_tokens = 0
+                for i in range(1, len(best_path_indices)): # skip 0 since already added
+                    if best_path_probs[i] >= min_conf_for_sure:
+                        additional_sure_tokens += 1
+                        tokens_to_add.append(best_path_indices[i])
+                    else:
+                        break
 
-                if 128003 in first_gen_id.tolist():
+                generated_tokens += len(tokens_to_add)
+                
+                # print(f"tokens to add: \'{self.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True).strip()}\' {[round(entry, 3) for entry in best_path_probs[:1+additional_sure_tokens]]}")
+                
+                args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(tokens_to_add).unsqueeze(0).to(device)), dim=-1)
+                attn_mask = torch.ones_like(args['tokens']).to(device)
+
+                # print()
+                print(" | ".join([str(round(entry, 5)).ljust(14) for entry in probabilities[0].tolist()]))
+                print(" | ".join([self.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in indices[0].tolist()]))
+
+                print(f"-> using {len(considered_tokens_probs)} beams")
+                
+                print(f"current generation: {self.tokenizer.decode(args['tokens'][0][original_input_len:-len(tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.tokenizer.decode(best_path_indices[1+additional_sure_tokens:], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                print("\n\n\n")
+
+                if 128003 in tokens_to_add:
+                    print("tokens to add contained stop token, stopping.")
                     break
 
-                print(f"\n\n\ncurrent output:\n{self.tokenizer.decode(generated_ids[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)}\n\n\n")
+                if generated_tokens >= config['max_new_tokens']:
+                    print("reached max_new_tokens, stopping.")
+                    break
 
 
-            # generated_ids = self.model.generate(args['tokens'], max_new_tokens=16, temperature=0.7, repetition_penalty=1.1, do_sample=True, eos_token_id=self.tokenizer.eos_token_id, num_beams=3, early_stopping=True)
+
             
-            
-            response = self.tokenizer.decode(generated_ids[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
-            self.output_shape = generated_ids[0][args['tokens'].shape[-1]:].shape
+            print("\n\n\n")
+
+            response = self.tokenizer.decode(args['tokens'][0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
+            self.output_shape = args['tokens'][original_input_len:].shape
             self.returned_content = [response.strip()]
+
 
 
 
@@ -372,7 +479,7 @@ def load_model(model_name, sync):
 
     if model_name == "Hermes-2-Theta-Llama-3-8B":
         pretrained = config['models'][model_name]['path']
-        tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False)
+        tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
 
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,

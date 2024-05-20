@@ -58,7 +58,7 @@
             "name": "Hermes-2-Theta-Llama-3-8B",
             "path": "/home/tobi/ai/models/text_to_text/Hermes-2-Theta-Llama-3-8B",
             "system_prompt": "You are a helpful assistant.",
-            "functions": "",
+            "functions": "You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {\"type\": \"function\", \"function\": {\"name\": \"get_web_info\", \"description\": \"get_web_info(symbol: str) -> dict - Get web results for a given query.\\n\\n    Args:\\n        query (str): The web search query.\\n\\n    Returns:\\n        dict: A dictionary containing web search results.\\n            Keys:\\n                - 'website': The first returned website.\\n                - 'website_content': The content of the website.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}} {\"type\": \"function\", \"function\": {\"name\": \"run_python\", \"description\": \"run_python(code: str) -> dict - Returns stdout and stderr from running the provided coda.\\n\\n    Args:\\n        code (str): The python code to run.\\n\\n    Returns:\\n        dict: A dictionary the outputs.\\n            Keys:\\n                - 'stdout': stdout from running the python code.\\n                - 'stderr': stderr from running the python code.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"code\": {\"type\": \"string\"}}, \"required\": [\"code\"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}, \"name\": {\"title\": \"Name\", \"type\": \"string\"}}, \"required\": [\"arguments\", \"name\"], \"title\": \"FunctionCall\", \"type\": \"object\"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"arguments\": <args-dict>, \"name\": <function-name>}\n</tool_call>",
             "model_on_cuda": 0,
             "token_on_cuda": {
                 "1": 0,
@@ -71,7 +71,7 @@
             "input_image": "no"
         }
     },
-    "max_new_tokens": 64,
+    "max_new_tokens": 1024,
     "torch_device": "cuda",
     "torch_device_map": "cuda",
     "torch_cuda_garbage_collection_threshold": 0.01

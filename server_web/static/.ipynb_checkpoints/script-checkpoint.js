@@ -107,6 +107,7 @@ function clearChat() {
     console.log("clicked clearChat button");
     document.getElementById('display-text').innerHTML = "";
     document.getElementById('display-text').chat = [];
+    hideLoadingAnimation();
     fetchInitText();
 }
 
