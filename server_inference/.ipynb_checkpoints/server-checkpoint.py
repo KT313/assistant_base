@@ -48,6 +48,7 @@ import requests
 import torch
 import copy
 import time
+import math
 import gc
 
 device = config['torch_device']
@@ -56,6 +57,7 @@ device_map = config['torch_device_map']
 class Sync():
     def __init__(self):
         self.current_model = ""
+        self.current_dtype = ""
 
     def prep_gen_inputs(self, args):
         # args should contain:
@@ -70,8 +72,8 @@ class Sync():
 
         # check if model needs to be changed
         print(args['model'], self.current_model, flush=True)
-        if args['model'] != self.current_model:
-            load_model(args['model'], self)
+        if args['model'] != self.current_model or args['model_dtype'] != self.current_dtype:
+            load_model(args['model'], args['model_dtype'], self)
 
         if args['model'] == "llama3-llava-next-8b":
             conv_template = "llava_llama_3"
@@ -176,10 +178,6 @@ class Sync():
             self.gen_inputs['beam_config'] = args['beam_config']
             self.input_shape = self.gen_inputs['tokens'].shape
 
-
-
-
-
         self.gen_inputs['model'] = args['model']
 
 
@@ -196,13 +194,7 @@ class Sync():
         for i in range(len(considered_tokens_probs)):
             batched_input_tokens.append(self.tokenizer.decode(torch.concatenate((args['tokens'], torch.tensor([[considered_tokens_indices[i]]]).to(device)), dim=-1)[0], skip_special_tokens=False, clean_up_tokenization_space=True))
 
-        # print(batched_input_tokens)
         batched_input_tokens = self.tokenizer(batched_input_tokens, return_tensors="pt")
-        # print(batched_input_tokens)
-        # batched_input_masks = torch.stack(batched_input_masks).to(device)
-
-        #batched_input_tokens = torch.concatenate((args['tokens'].repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices).unsqueeze(1).to(device)), dim=-1)
-        #batched_input_masks = torch.ones_like(batched_input_tokens).to(device)
                 
             
         beam_output = self.model.generate(
@@ -212,19 +204,19 @@ class Sync():
             temperature=1.0,
             repetition_penalty=1.1,
             do_sample=False,
+            num_beams=1,
             # early_stopping=True,
             eos_token_id=self.tokenizer.eos_token_id,
             output_scores=True,
             return_dict_in_generate=True,
             pad_token_id = 128003
         )
-        # print(beam_output)
 
         for i in range(len(considered_tokens_probs)):
             # case considered token is stop token:
             if considered_tokens_indices[i] == 128003:
-                total_probs.append(considered_tokens_probs[i])
-                prediction_paths_probs.append([considered_tokens_probs[i]])
+                total_probs.append(math.log(considered_tokens_probs[i]))
+                prediction_paths_probs.append([math.log(considered_tokens_probs[i])])
                 prediction_paths_indices.append([considered_tokens_indices[i]])
                 skip_path.append(i)
                 continue
@@ -233,23 +225,17 @@ class Sync():
             highest_path_indices = []
             for token_num in range(len(beam_output.scores)):
                 beam_probabilities, beam_indices = torch.topk(torch.softmax(beam_output.scores[token_num][i], dim=-1), k=args['max_num_beams'])
-                # print(beam_probabilities, beam_indices)
-                highest_path_probs.append(beam_probabilities.tolist()[0])
+                highest_path_probs.append(math.log(beam_probabilities.tolist()[0]))
                 highest_path_indices.append(beam_indices.tolist()[0])
-            total_prob = considered_tokens_probs[i]
-            for a in highest_path_probs:
-                total_prob *= a
+            total_prob = math.log(considered_tokens_probs[i])
+            total_prob += sum(highest_path_probs)
             total_probs.append(total_prob)
-            prediction_paths_probs.append([considered_tokens_probs[i]]+highest_path_probs)
+            prediction_paths_probs.append([math.log(considered_tokens_probs[i])]+highest_path_probs)
             prediction_paths_indices.append([considered_tokens_indices[i]]+highest_path_indices)
 
-        print("paths total probs:", [round(entry, 6) for entry in total_probs])
+        print("paths total probs:", [round(entry, 3) for entry in total_probs])
 
         best_beam = max(enumerate(total_probs),key=lambda x: x[1])[0]
-        # print("-> best beam:", best_beam)
-
-        # print("best beam prediction path:", [round(entry, 3) for entry in prediction_paths_probs[best_beam]], prediction_paths_indices[best_beam], self.tokenizer.decode(prediction_paths_indices[best_beam], skip_special_tokens=False, clean_up_tokenization_space=True))
-        # print("\n\n\n")
 
         return prediction_paths_probs[best_beam], prediction_paths_indices[best_beam]
 
@@ -262,7 +248,6 @@ class Sync():
         # gen_inputs
 
         # llama3-llava-next-8b
-        # print(json.dumps(args, indent=4), flush=True)
         if args['model'] == "llama3-llava-next-8b":
             if args['image_tensor'] != None:  
                 pass
@@ -293,7 +278,7 @@ class Sync():
               max_tokens=config['max_new_tokens'], # Generate up to 32 tokens, set to None to generate up to the end of the context window
               stop=["<|eot_id|>", "<|end_of_text|>"], # Stop generating just before the model would generate a new question
               echo=False # Echo the prompt back in the output
-            ) # Generate a completion, can also call create_completion
+            )
             self.returned_content = [out['text'] for out in output['choices']]
             self.output_shape = [1, output['usage']['completion_tokens']]
             self.input_shape = [1, output['usage']['prompt_tokens']]
@@ -320,12 +305,32 @@ class Sync():
             num_beams_this_run = max_num_beams
 
             print("input:", self.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True))
+
+            if not args['beam_config']['use_beam_search']:
+                output = self.model.generate(
+                    args['tokens'],
+                    attention_mask = attn_mask,
+                    max_new_tokens=config['max_new_tokens'],
+                    temperature=0.7,
+                    repetition_penalty=1.1,
+                    do_sample=False,
+                    num_beams=1,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    output_scores=True,
+                    return_dict_in_generate=True,
+                    pad_token_id = 128003
+                )
+                response = self.tokenizer.decode(output.sequences[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
+                self.output_shape = output.sequences[0][original_input_len:].shape
+                self.returned_content = [response.strip()]
+                
+                return None
+
+            
             
             for step in range(config['max_new_tokens']):
 
-                # custom beam search
-                # print("num_beams:", num_beams_this_run)
-                
+                # custom beam search                
                 output = self.model.generate(
                     args['tokens'],
                     attention_mask = attn_mask,
@@ -333,21 +338,14 @@ class Sync():
                     temperature=1.0,
                     repetition_penalty=1.1,
                     do_sample=False,
+                    num_beams=1,
                     eos_token_id=self.tokenizer.eos_token_id,
                     output_scores=True,
                     return_dict_in_generate=True,
                     pad_token_id = 128003
                 )
     
-                # print("\n\n\n")
-                # print(output)
-                # print()
                 probabilities, indices = torch.topk(torch.softmax(output.scores[0], dim=-1), k=8)
-                # print(" | ".join([str(round(entry, 5)).ljust(10) for entry in probabilities[0].tolist()]))
-                # print(" | ".join([self.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(10) for entry in indices[0].tolist()]))
-                # print("top token prob:", probabilities[0].tolist()[0])
-                # print("top token index:", indices[0].tolist()[0], f"   (decoded: {self.tokenizer.decode(indices[0].tolist()[0], skip_special_tokens=False, clean_up_tokenization_space=True).strip()})")
-                # print()
                 considered_tokens_probs = []
                 considered_tokens_indices = []
                 for i in range(max_num_beams):
@@ -358,34 +356,37 @@ class Sync():
                         considered_tokens_indices.append(indices[0].tolist()[i])
                     if sum(considered_tokens_probs) >= prob_sum_for_search:
                         break
-                # print(f"considered tokens:\n{[round(entry, 5) for entry in considered_tokens_probs]} (sum: {round(sum(considered_tokens_probs), 5)})\n{considered_tokens_indices}")
-                # print(f"-> using {len(considered_tokens_probs)} beams")
-                # for all considered tokens, follow their highest prob path and get the total prob
-    
-                best_path_probs, best_path_indices = self.get_best_path(args, considered_tokens_probs, considered_tokens_indices)
-    
-                tokens_to_add = [best_path_indices[0]] # at least at the init token for the best path
-                additional_sure_tokens = 0
-                for i in range(1, len(best_path_indices)): # skip 0 since already added
-                    if best_path_probs[i] >= min_conf_for_sure:
-                        additional_sure_tokens += 1
-                        tokens_to_add.append(best_path_indices[i])
-                    else:
-                        break
 
+                if len(considered_tokens_indices) == 1:
+                    tokens_to_add = [considered_tokens_indices[0]]
+                    best_path_indices = tokens_to_add
+                    additional_sure_tokens = 0
+                    
+                else:
+                    best_path_probs, best_path_indices = self.get_best_path(args, considered_tokens_probs, considered_tokens_indices)
+        
+                    tokens_to_add = [best_path_indices[0]] # at least at the init token for the best path
+                    additional_sure_tokens = 0
+                    for i in range(1, len(best_path_indices)): # skip 0 since already added
+                        if best_path_probs[i] >= math.log(min_conf_for_sure):
+                            additional_sure_tokens += 1
+                            tokens_to_add.append(best_path_indices[i])
+                        else:
+                            break
+                        
                 generated_tokens += len(tokens_to_add)
-                
-                # print(f"tokens to add: \'{self.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True).strip()}\' {[round(entry, 3) for entry in best_path_probs[:1+additional_sure_tokens]]}")
                 
                 args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(tokens_to_add).unsqueeze(0).to(device)), dim=-1)
                 attn_mask = torch.ones_like(args['tokens']).to(device)
 
-                # print()
                 print(" | ".join([str(round(entry, 5)).ljust(14) for entry in probabilities[0].tolist()]))
                 print(" | ".join([self.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in indices[0].tolist()]))
+                if len(considered_tokens_indices) == 1:
+                    print("-> single considered token, not doing beam search")
+                else:
+                    print(f"-> using {len(considered_tokens_probs)} beams")
 
-                print(f"-> using {len(considered_tokens_probs)} beams")
-                
+                print("\n")
                 print(f"current generation: {self.tokenizer.decode(args['tokens'][0][original_input_len:-len(tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.tokenizer.decode(best_path_indices[1+additional_sure_tokens:], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
                 print("\n\n\n")
 
@@ -396,9 +397,6 @@ class Sync():
                 if generated_tokens >= config['max_new_tokens']:
                     print("reached max_new_tokens, stopping.")
                     break
-
-
-
             
             print("\n\n\n")
 
@@ -422,7 +420,7 @@ class Sync():
 
 sync = Sync()
 
-def load_model(model_name, sync):
+def load_model(model_name, dtype, sync):
     try:
         del sync.model
         gc.collect()
@@ -441,7 +439,6 @@ def load_model(model_name, sync):
         sync.model = model
         sync.image_processor = image_processor
         sync.max_length = max_length
-        sync.current_model = model_name
 
     if model_name == "paligemma-3b-mix-448":
         pretrained = config['models'][model_name]['path']
@@ -455,7 +452,6 @@ def load_model(model_name, sync):
 
         sync.processor = processor
         sync.model = model
-        sync.current_model = model_name
 
     if model_name == "Meta-Llama-3-70B-Instruct-IQ2_S":
         pretrained = config['models'][model_name]['path']
@@ -467,7 +463,6 @@ def load_model(model_name, sync):
             flash_attn=True,
         )
         sync.model = model
-        sync.current_model = model_name
 
     if model_name == "Meta-Llama-3-70B-Instruct-IQ1_M":
         pretrained = config['models'][model_name]['path']
@@ -479,31 +474,53 @@ def load_model(model_name, sync):
             flash_attn=True,
         )
         sync.model = model
-        sync.current_model = model_name
 
     if model_name == "Hermes-2-Theta-Llama-3-8B":
         pretrained = config['models'][model_name]['path']
         tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            #load_in_4bit=True,
-            #bnb_4bit_use_double_quant=True,
-            #bnb_4bit_quant_type="nf4",
-            #bnb_4bit_compute_dtype=torch.bfloat16
-        )
-        
-        model = LlamaForCausalLM.from_pretrained(
-            pretrained,
-            # torch_dtype=torch.float16,
-            device_map=config['torch_device_map'],
-            quantization_config=bnb_config,
-            use_flash_attention_2=True
-        )
+        if dtype == "float16":
+            model = LlamaForCausalLM.from_pretrained(
+                pretrained,
+                torch_dtype=torch.float16,
+                device_map=config['torch_device_map'],
+                # quantization_config=bnb_config,
+                use_flash_attention_2=True
+            )
+        elif dtype == "bfloat16":
+            model = LlamaForCausalLM.from_pretrained(
+                pretrained,
+                torch_dtype=torch.bfloat16,
+                device_map=config['torch_device_map'],
+                # quantization_config=bnb_config,
+                use_flash_attention_2=True
+            )
+        else:
+            if dtype == "8bit":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                )
+            elif dtype == "4bit":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16
+                )
+            
+            model = LlamaForCausalLM.from_pretrained(
+                pretrained,
+                # torch_dtype=torch.float16,
+                device_map=config['torch_device_map'],
+                quantization_config=bnb_config,
+                use_flash_attention_2=True
+            )
         
         sync.tokenizer = tokenizer
         sync.model = model
-        sync.current_model = model_name
+        
+    sync.current_model = model_name
+    sync.current_dtype = dtype
 
 
 
@@ -513,7 +530,7 @@ def load_model(model_name, sync):
 
         
 
-# load_model("llama3-llava-next-8b", sync)
+# load_model("Hermes-2-Theta-Llama-3-8B", sync)
 
 
 
@@ -582,9 +599,10 @@ def infer_helper(request_json):
             if not isinstance(data['chat'], list):
                 data['chat'] = [data['chat']]
         
+            inputs = data
+            inputs['image'] = None
 
-
-            sync.prep_gen_inputs({'model': data['model'], 'chat': data['chat'], 'image': None, 'manual_system_prompt': data['manual_system_prompt'], 'use_functions': data['use_functions'], 'beam_config': data['beam_config']})
+            sync.prep_gen_inputs(inputs)
             
             if sync.error:
                 return json.dumps({'status': 'error', 'error-info': sync.error_info})

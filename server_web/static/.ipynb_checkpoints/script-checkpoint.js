@@ -28,12 +28,18 @@ function sendUserMsg() {
     const chat = document.getElementById('display-text').chat;
     userInput.value = '';
     const manualSystemPrompt = document.getElementById('manual-system-prompt');
+    
+    const use_beam_search = document.getElementById('usebeamsearch-checkbox');
     const max_num_beams = document.getElementById('max_num_beams');
     const depth_beams = document.getElementById('depth_beams');
     const min_conf_for_sure = document.getElementById('min_conf_for_sure');
     const min_conf_for_consider = document.getElementById('min_conf_for_consider');
     const prob_sum_for_search = document.getElementById('prob_sum_for_search');
+    
     const usefunctions = document.getElementById('usefunctions-checkbox');
+    
+    const modeldtype = document.querySelector('input[name="model-dtype"]:checked');
+    
     const model_selector = document.getElementById('modelSelector').value;
     if (model_selector == "default") {
         model_val = "llama3-llava-next-8b";
@@ -47,7 +53,7 @@ function sendUserMsg() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({'chat': chat, 'model': model_val, 'manual_system_prompt': manualSystemPrompt.value, 'use_functions': usefunctions.checked, 'beam_config': {'max_num_beams': max_num_beams.value, 'depth_beams': depth_beams.value, 'min_conf_for_sure': min_conf_for_sure.value, 'min_conf_for_consider': min_conf_for_consider.value, 'prob_sum_for_search': prob_sum_for_search.value}})
+        body: JSON.stringify({'chat': chat, 'model': model_val, 'manual_system_prompt': manualSystemPrompt.value, 'use_functions': usefunctions.checked, 'model_dtype': modeldtype.value, 'beam_config': {'use_beam_search': use_beam_search.checked, 'max_num_beams': max_num_beams.value, 'depth_beams': depth_beams.value, 'min_conf_for_sure': min_conf_for_sure.value, 'min_conf_for_consider': min_conf_for_consider.value, 'prob_sum_for_search': prob_sum_for_search.value}})
     })
     .then(response => response.json())
     .then(data => {
@@ -126,4 +132,8 @@ function moreInfoCheckbox() {
 
 function usefunctionsCheckbox() {
     console.log("changed usefunctions checkbox");
+}
+
+function usebeamsearchCheckbox() {
+    console.log("changed usebeamsearch checkbox");
 }

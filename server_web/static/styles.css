@@ -182,3 +182,12 @@ a.clear-chat-button:active{
     color: #000;
     text-shadow: #888 1px 1px 10px;
 }
+
+.text-info .label {
+    width: 140px;
+    display: inline-block;
+}
+
+.num-input {
+    width: 50px;
+}
