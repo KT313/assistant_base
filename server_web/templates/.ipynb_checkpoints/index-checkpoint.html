@@ -29,6 +29,9 @@
                         <option value="paligemma-3b-mix-448">paligemma-3b-mix-448</option>
                         <option value="Meta-Llama-3-70B-Instruct-IQ2_S">Llama-3-70B-Instruct-IQ2_S</option>
                         <option value="Meta-Llama-3-70B-Instruct-IQ1_M">Llama-3-70B-Instruct-IQ1_M</option>
+                        <option value="phi-3-mini-128k-instruct">Phi-3-mini-128k-instruct</option>
+                        <option value="phi-3-medium-128k-instruct">Phi-3-medium-128k-instruct</option>
+                        <option value="phi-3-vision-128k-instruct">Phi-3-vision-128k-instruct</option>
                     </select>
                 </div><br>
                 <input type="checkbox" id="moreinfo-checkbox" onchange="moreInfoCheckbox()"><label for="moreinfo-checkbox">Show more info</label><br>
@@ -53,12 +56,15 @@
                 <input type="radio" id="4bit" name="model-dtype" value="4bit"><label for="4bit">4bit</label><br>
                 
                 <textarea type="text" id="manual-system-prompt" placeholder="Type your system prompt here..."></textarea><br>
+                max new tokens (default 1024) <input type="number" class="num-input" min="1" id="max_new_tokens" value=1024><br>
+
+                <input type="checkbox" id="debugmode-checkbox" onchange="debugmodeCheckbox()"><label for="debugmode-checkbox">Use Debug-Mode</label><br>
 
                 <input type="checkbox" id="usebeamsearch-checkbox" onchange="usebeamsearchCheckbox()"><label for="usebeamsearch-checkbox">Use Beam-Search</label><br>
                 max_num_beams (default 4) <input type="number" class="num-input" min="1" id="max_num_beams" value=4><br>
                 depth_beams (default 8) <input type="number" class="num-input" min="1" id="depth_beams" value=8><br>
-                min_conf_for_sure (default 0.98) <input type="number" class="num-input" min="0" max="1" step=0.01 id="min_conf_for_sure" value=0.98><br>
-                min_conf_for_consider (default 0.01) <input type="number" class="num-input" min="0" max="1" step=0.01 id="min_conf_for_consider" value=0.01><br>
+                min_conf_for_sure (default 0.95) <input type="number" class="num-input" min="0" max="1" step=0.01 id="min_conf_for_sure" value=0.95><br>
+                min_conf_for_consider (default 0.02) <input type="number" class="num-input" min="0" max="1" step=0.01 id="min_conf_for_consider" value=0.02><br>
                 prob_sum_for_search (default 0.98) <input type="number" class="num-input" min="0" max="1" step=0.01 id="prob_sum_for_search" value=0.98><br>
             </div>
         </div>

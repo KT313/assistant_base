@@ -69,6 +69,45 @@
             "context_len": 0,
             "input_text": "required",
             "input_image": "no"
+        },
+        "phi-3-mini-128k-instruct": {
+            "name": "phi-3-mini-128k-instruct",
+            "path": "/home/tobi/ai/models/text_to_text/Phi-3-mini-128k-instruct",
+            "model_on_cuda": 0,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "input_text": "required",
+            "input_image": "no"
+        },
+        "phi-3-medium-128k-instruct": {
+            "name": "phi-3-medium-128k-instruct",
+            "path": "/home/tobi/ai/models/text_to_text/Phi-3-medium-128k-instruct",
+            "model_on_cuda": 0,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "input_text": "required",
+            "input_image": "no"
+        },
+        "phi-3-vision-128k-instruct": {
+            "name": "phi-3-vision-128k-instruct",
+            "path": "/home/tobi/ai/models/multimodal/Phi-3-vision-128k-instruct",
+            "model_on_cuda": 0,
+            "token_on_cuda": {
+                "1": 0,
+                "10": 0,
+                "100": 0,
+                "1000": 0
+            },
+            "input_text": "not tested",
+            "input_image": "not tested"
         }
     },
     "max_new_tokens": 1024,
