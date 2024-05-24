@@ -8,11 +8,9 @@ from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_i
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
 from conversation import conv_templates, SeparatorStyle
 
-from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
-
 from llama_cpp import Llama
 
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration
 import bitsandbytes, flash_attn
 
 from PIL import Image
@@ -27,3 +25,6 @@ import torch
 from torch.autograd import profiler
 
 from flask import Flask, render_template, request, jsonify
+
+import base64
+import io

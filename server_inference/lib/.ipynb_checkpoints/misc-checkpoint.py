@@ -73,13 +73,36 @@ def prep_for_new_gen(sync, request_json, show_info=False):
     dhold.start_time_total =  time.time()
     data = dhold.request_json
     if show_info:
-        print("data:", data, flush=True)
+        for key, val in data.items():
+            if key != "images":
+                print(key, val, flush=True)
 
     if not isinstance(data['chat'], list):
         data['chat'] = [data['chat']]
 
     inputs = data
-    inputs['image'] = None
+    if len(inputs['images']) > 0:
+        inputs['images'] = base64_to_pil(inputs['images'])
+        if show_info:
+            for image in inputs['images']:
+                print(image.size)
     inputs['max_new_tokens'] = int(inputs['max_new_tokens'].strip())
     
     dhold.inputs = inputs
+
+def base64_to_pil(base64_images):
+    pil_images = []
+    for base64_image in base64_images:
+        # Decode the Base64 string
+        decoded_data = base64.b64decode(base64_image.split(',')[1])
+        
+        # Create a file-like object from the decoded data
+        image_data = io.BytesIO(decoded_data)
+        
+        # Open the file-like object as a PIL image
+        pil_image = Image.open(image_data)
+        
+        # Append the PIL image to the list
+        pil_images.append(pil_image)
+
+    return pil_images

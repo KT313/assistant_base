@@ -49,6 +49,15 @@ function sendUserMsg() {
     } else {
         model_val = model_selector;
     }
+
+    // Get the uploaded images as Base64-encoded strings
+    const imageGrid = document.querySelector('.image-grid');
+    const imageElements = imageGrid.querySelectorAll('div');
+    const base64Images = Array.from(imageElements).map(element => {
+        const backgroundImage = element.style.backgroundImage;
+        const base64Data = backgroundImage.slice(5, -2); // Remove the 'url("' and '")' parts
+        return base64Data;
+    });
     
 
     fetch('/send_user_msg', {
@@ -56,7 +65,24 @@ function sendUserMsg() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({'chat': chat, 'model': model_val, 'manual_system_prompt': manualSystemPrompt.value, 'use_functions': usefunctions.checked, 'model_dtype': modeldtype.value, 'max_new_tokens': max_new_tokens.value, 'debugmode': debugmode.checked, 'beam_config': {'use_beam_search': use_beam_search.checked, 'max_num_beams': max_num_beams.value, 'depth_beams': depth_beams.value, 'min_conf_for_sure': min_conf_for_sure.value, 'min_conf_for_consider': min_conf_for_consider.value, 'prob_sum_for_search': prob_sum_for_search.value}})
+        body: JSON.stringify({
+            'chat': chat, 
+            'model': model_val, 
+            'manual_system_prompt': manualSystemPrompt.value, 
+            'use_functions': usefunctions.checked, 
+            'model_dtype': modeldtype.value, 
+            'max_new_tokens': max_new_tokens.value, 
+            'debugmode': debugmode.checked, 
+            'beam_config': {
+                'use_beam_search': use_beam_search.checked, 
+                'max_num_beams': max_num_beams.value, 
+                'depth_beams': depth_beams.value, 
+                'min_conf_for_sure': min_conf_for_sure.value, 
+                'min_conf_for_consider': min_conf_for_consider.value, 
+                'prob_sum_for_search': prob_sum_for_search.value
+            },
+            'images': base64Images
+        })
     })
     .then(response => response.json())
     .then(data => {
@@ -143,4 +169,64 @@ function usebeamsearchCheckbox() {
 
 function debugmodeCheckbox() {
     console.log("changed debugmode checkbox");
+}
+
+function upload() {
+    const fileUploadInput = document.querySelector('.file-uploader');
+    const files = Array.from(fileUploadInput.files);
+
+    // Check if any files are selected
+    if (files.length === 0) {
+        return;
+    }
+
+    // Check if all selected files are images
+    const allImagesValid = files.every(file => file.type.includes('image'));
+    if (!allImagesValid) {
+        return alert('Only images are allowed!');
+    }
+
+    // Check if total size exceeds 10 MB
+    const totalSize = files.reduce((total, file) => total + file.size, 0);
+    if (totalSize > 10_000_000) {
+        return alert('Maximum upload size is 10MB!');
+    }
+
+    const imageGrid = document.querySelector('.image-grid');
+    imageGrid.innerHTML = ''; // Clear previous content
+
+    const gridSize = getGridSize(files.length);
+    const imageSize = `calc(100% / ${gridSize})`;
+
+    files.forEach(file => {
+        const fileReader = new FileReader();
+        fileReader.readAsDataURL(file);
+
+        fileReader.onload = (fileReaderEvent) => {
+            const imageElement = document.createElement('div');
+            imageElement.style.backgroundImage = `url(${fileReaderEvent.target.result})`;
+            imageElement.style.width = imageSize;
+            imageElement.style.height = imageSize;
+            imageElement.style.backgroundSize = 'cover';
+            imageElement.style.backgroundPosition = 'center';
+            imageGrid.appendChild(imageElement);
+        };
+    });
+}
+
+function getGridSize(numImages) {
+    if (numImages <= 1) {
+        return 1;
+    } else if (numImages <= 4) {
+        return 2;
+    } else if (numImages <= 16) {
+        return 4;
+    } else {
+        return Math.ceil(Math.sqrt(numImages));
+    }
+}
+
+function clearImages() {
+    const imageGrid = document.querySelector('.image-grid');
+    imageGrid.innerHTML = ''; // Clear previous content
 }

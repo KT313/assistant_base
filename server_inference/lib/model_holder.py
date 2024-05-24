@@ -103,6 +103,11 @@ class ModelHolder():
             
             self.tokenizer = tokenizer
             self.model = model
+
+        if model_name == "phi-3-vision-128k-instruct":
+            pretrained = sync.config['models'][model_name]['path']
+            self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto")
+            self.processor = AutoProcessor.from_pretrained(pretrained, trust_remote_code=True) 
             
         self.current_model = model_name
         self.current_dtype = dtype

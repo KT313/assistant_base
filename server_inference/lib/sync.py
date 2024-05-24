@@ -126,13 +126,23 @@ class Sync():
             self.dhold.gen_inputs['beam_config'] = args['beam_config']
             self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
 
-        if args['model'] == "Phi-3-mini-128k-instruct-onnx-cuda":
-            chat_template = '<|user|>\n{input} <|end|>\n<|assistant|>'
-            prompt = f'{chat_template.format(input=text)}'
+        if args['model'] == "phi-3-vision-128k-instruct":
+            if len(args['images']) > 0:
+                to_add_for_images = ""
+                for i in range(len(args['images'])):
+                    to_add_for_images += f"<|image_{i+1}|>\n"
+                args['chat'][-1]['content'] = to_add_for_images+args['chat'][-1]['content']
+            prompt = self.mhold.processor.tokenizer.apply_chat_template(args['chat'], tokenize=False, add_generation_prompt=True)
 
-            tokens = self.mhold.tokenizer.encode(prompt)
+            print("prompt:", prompt)
+
+            if len(args['images']) > 0:
+                tokens = self.mhold.processor(prompt, args['images'], return_tensors="pt").to(self.config['torch_device'])
+            else:
+                tokens = self.mhold.processor(prompt, return_tensors="pt").to(self.config['torch_device'])
+
             self.dhold.gen_inputs['tokens'] = tokens
-            self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
+            self.dhold.input_shape = self.dhold.gen_inputs['tokens'].input_ids.shape
 
         self.dhold.gen_inputs['model'] = args['model']
 
@@ -367,30 +377,21 @@ class Sync():
             
                 print("\n\n\n")
 
-        if args['model'] == "Phi-3-mini-128k-instruct-onnx-cuda":
-            params = og.GeneratorParams(model)
-            params.input_ids = args['tokens']
-            generator = og.Generator(self.mhold.model, params)
-            outputs = []
-    
-            try:
-                while not generator.is_done():
-                    generator.compute_logits()
-                    generator.generate_next_token()
-    
-                    new_token = generator.get_next_tokens()[0]
-                    output = tokenizer_stream.decode(new_token)
-                    outputs.append(output)
-                    if args['debugmode']:
-                        print(output)
-            except KeyboardInterrupt:
-                pass
+        if args['model'] == "phi-3-vision-128k-instruct":
+            generation_args = { 
+                "max_new_tokens": args['max_new_tokens'], 
+                "temperature": 1.0, 
+                "do_sample": False, 
+            } 
             
-            self.dhold.output_shape = [len(outputs)]
-            self.dhold.returned_content = ["".join(outputs)]
-    
-            # Delete the generator to free the captured graph for the next generator, if graph capture is enabled
-            del generator
+            generate_ids = self.mhold.model.generate(**args['tokens'], eos_token_id=self.mhold.processor.tokenizer.eos_token_id, **generation_args) 
+            
+            # remove input tokens 
+            generate_ids = generate_ids[:, args['tokens']['input_ids'].shape[1]:]
+            response = self.mhold.processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0] 
+            
+            self.dhold.output_shape = generate_ids.shape
+            self.dhold.returned_content = [response.strip()]
 
     def make_new_dhold(self):
         self.dhold = DataHolder()

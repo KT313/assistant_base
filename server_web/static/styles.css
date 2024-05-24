@@ -191,3 +191,67 @@ a.clear-chat-button:active{
 .num-input {
     width: 50px;
 }
+
+.image-area {
+    border: 1px solid #00000044;
+    margin-left: 10px;
+    margin-top: 15px;
+    opacity: 0.75;
+    position: relative;
+    overflow: hidden;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+.image-upload-area {
+    border: 1px solid #00000044;
+    opacity: 0.75;
+    height: 250px;
+    width: 250px;
+    position: relative;
+    overflow: hidden;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+.image-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+}
+
+.file-uploader {
+    opacity: 0;
+    height: 100%;
+    width: 100%;
+    cursor: pointer;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+}
+
+.upload-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    color: #ccc;
+    -webkit-text-stroke-width: 2px;
+    -webkit-text-stroke-color: #bbb;
+    z-index: 1;
+}
+
+.image-upload-area:hover .upload-icon {
+    opacity: 1;
+}

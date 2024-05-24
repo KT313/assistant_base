@@ -7,12 +7,12 @@ sync = Sync(config)
 def infer_helper(request_json):
     with ClearCache():
         with torch.no_grad():
-            prep_for_new_gen(sync, request_json, show_info=False)
+            prep_for_new_gen(sync, request_json, show_info=True)
             
             sync.prep_gen_inputs()
             sync.generate()
             
-            make_output_dict_str(sync, show_info=False)
+            make_output_dict_str(sync, show_info=True)
             return sync.dhold.output_dict
     
 
