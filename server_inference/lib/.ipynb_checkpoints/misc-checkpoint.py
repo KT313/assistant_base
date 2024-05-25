@@ -106,3 +106,27 @@ def base64_to_pil(base64_images):
         pil_images.append(pil_image)
 
     return pil_images
+
+
+
+def find_top_indexes(arr, n_top):
+    print(arr)
+    if isinstance(arr, list) and isinstance(arr[0], np.ndarray):
+        print("is np array")
+        arr = [entry.squeeze(0).tolist() for entry in arr]
+
+    arr = np.array(arr)
+    nan_mask = np.isnan(arr)
+    arr[nan_mask] = -np.inf
+
+    softmax_arr = softmax(arr, axis=1)
+    top_indexes = np.argsort(softmax_arr)[:, -n_top:]
+    result = []
+    for i, row_indexes in enumerate(top_indexes):
+        row_result = []
+        for index in row_indexes:
+            if not nan_mask[i, index]:
+                row_result.append((index, softmax_arr[i, index]))
+        row_result.sort(key=lambda x: x[1], reverse=True)
+        result.append(row_result)
+    return result

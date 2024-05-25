@@ -34,6 +34,7 @@ class ModelHolder():
                 n_gpu_layers=-1, # Uncomment to use GPU acceleration
                 # seed=1337, # Uncomment to set a specific seed
                 n_ctx=1024, # Uncomment to increase the context window
+                logits_all=True,
                 flash_attn=True,
             )
             self.model = model

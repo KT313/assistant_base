@@ -28,3 +28,6 @@ from flask import Flask, render_template, request, jsonify
 
 import base64
 import io
+import numpy as np
+from tqdm import tqdm
+from scipy.special import softmax

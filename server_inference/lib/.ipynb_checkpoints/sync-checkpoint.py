@@ -1,6 +1,7 @@
 from .imports import *
 from .model_holder import ModelHolder
 from .data_holder import DataHolder
+from .misc import softmax, find_top_indexes
 
 class Sync():
     def __init__(self, config=None):
@@ -165,14 +166,18 @@ class Sync():
 
         return prediction_paths_probs[best_beam], prediction_paths_indices[best_beam]
 
-    def generate(self):
+    def generate(self, limit_tokens=None):
         self.dhold.start_time_inference = time.time()
         if self.dhold.error:
             return None
         args = self.dhold.gen_inputs
+        if limit_tokens != None:
+            args['max_new_tokens'] = limit_tokens
         # args should contain:
         # model
         # gen_inputs
+
+        # general settings
 
         generated_tokens = 0
 
@@ -192,43 +197,120 @@ class Sync():
             'max_new_tokens': args['max_new_tokens'],
             'do_sample': False,
             'temperature': 1,
+            'output_scores': True,
+            'return_dict_in_generate': True,
         }
         got_input_shape_already = True
-    
-        if args['model'] == "llama3-llava-next-8b":
-            gen_kwargs.update({
-                'images': args['image_tensor'],
-                'image_sizes': args['image_sizes'],
-            })
-            gen_function = self.mhold.model.generate
-            gen_input = args['tokens']
-            output_processor = lambda output: self.mhold.tokenizer.batch_decode(output, skip_special_tokens=True)
-            shape_attr = 'shape'
-        else:
-            del gen_kwargs['max_new_tokens']
-            del gen_kwargs['do_sample']
-            gen_kwargs.update({
-                'max_tokens': args['max_new_tokens'],
-                'stop': ["<|eot_id|>", "<|end_of_text|>"],
-                'echo': False,
-                'top_k': 1,
-            })
-            got_input_shape_already = False
-            gen_function = self.mhold.model
-            gen_input = args['text']
-            output_processor = lambda output: [out['text'] for out in output['choices']]
-            shape_attr = lambda output: [1, output['usage']['completion_tokens']]
-            input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
-            # self.dhold.input_shape = [1, gen_output['usage']['prompt_tokens']]
 
-        gen_output = gen_function(gen_input, **gen_kwargs)
-        self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
-        if not got_input_shape_already:
-            self.dhold.input_shape = input_shape_attr(gen_output)
-        self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)
+        
+
+        # model specific settings
+        if not args['beam_config']['use_beam_search']:
+            
+            if args['model'] == "llama3-llava-next-8b":
+                print(args['tokens'].shape)
+                original_input_len = args['tokens'].shape[-1]
+                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+                gen_kwargs.update({
+                    'images': args['image_tensor'],
+                    'image_sizes': args['image_sizes'],
+                    'attention_mask': attn_mask,
+                    'num_beams': 1,
+                    'pad_token_id': self.mhold.tokenizer.eos_token_id,
+                })
+                gen_function = self.mhold.model.generate
+                gen_input = args['tokens']
+                # output_processor = lambda output: self.mhold.tokenizer.batch_decode(output, skip_special_tokens=True)
+                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][:], skip_special_tokens=True) for i in range(len(output.sequences))]
+                shape_attr = lambda output: output.sequences[0][:].shape
+                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
+                
+            if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
+                del gen_kwargs['max_new_tokens']
+                del gen_kwargs['do_sample']
+                del gen_kwargs['output_scores']
+                del gen_kwargs['return_dict_in_generate']
+                gen_kwargs.update({
+                    'max_tokens': args['max_new_tokens'],
+                    'stop': ["<|eot_id|>", "<|end_of_text|>"],
+                    'echo': False,
+                    'top_k': 1,
+                    'logprobs': -1,
+                })
+                got_input_shape_already = False
+                gen_function = self.mhold.model
+                gen_input = args['text']
+                output_processor = lambda output: [out['text'] for out in output['choices']]
+                shape_attr = lambda output: [1, output['usage']['completion_tokens']]
+                input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
+                get_logits = lambda scores: find_top_indexes(self.mhold.model._scores[-self.dhold.output_shape[-1]:], max_num_beams)
+                
+            if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+                original_input_len = args['tokens'].shape[-1]
+                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+                
+                gen_kwargs.update({
+                    'attention_mask': attn_mask,
+                    'num_beams': 1,
+                    'eos_token_id': self.mhold.tokenizer.eos_token_id,
+                    'output_scores': True,
+                    'return_dict_in_generate': True,
+                    'pad_token_id': 128003
+                })
+                gen_function = self.mhold.model.generate
+                gen_input = args['tokens']
+                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][original_input_len:], skip_special_tokens=True) for i in range(len(output.sequences))]
+                shape_attr = lambda output: output.sequences[0][original_input_len:].shape
+                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
+
+            if args['model'] == "phi-3-vision-128k-instruct":
+                gen_kwargs.update({
+                    'attention_mask': args['tokens'].attention_mask,
+                    'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
+                    'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
+                    'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
+                })
+                gen_function = self.mhold.model.generate
+                gen_input = args['tokens'].input_ids
+                output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
+                shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
+                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
     
-        if args['debugmode']:
-            print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
+            
+            gen_output = gen_function(gen_input, **gen_kwargs)
+
+            self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
+            self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
+            
+            self.dhold.logits = get_logits(gen_output)
+            print(f"logits:\n{self.dhold.logits}")
+            # for ls in self.dhold.logits:
+            #     for val in ls:
+            #         print(val[0], self.mhold.tokenizer.decode(val[0]))
+            #     print()
+            
+            if not got_input_shape_already:
+                self.dhold.input_shape = input_shape_attr(gen_output)
+        
+            if args['debugmode']:
+                print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
+
+        else:
+            pass
+
+
+        return None
+
+
+
+
+
+
+
+
+
+
+        
         
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
 
@@ -241,26 +323,6 @@ class Sync():
             
             if args['debugmode']:
                 print("input:", self.mhold.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True))
-
-            if not args['beam_config']['use_beam_search']:
-                gen_output = self.mhold.model.generate(
-                    args['tokens'],
-                    attention_mask = attn_mask,
-                    max_new_tokens=args['max_new_tokens'],
-                    temperature=1.0,
-                    repetition_penalty=1.1,
-                    do_sample=False,
-                    num_beams=1,
-                    eos_token_id=self.mhold.tokenizer.eos_token_id,
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                    pad_token_id = 128003
-                )
-                response = self.mhold.tokenizer.decode(gen_output.sequences[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
-                self.dhold.output_shape = gen_output.sequences[0][original_input_len:].shape
-                self.dhold.returned_content = [response.strip()]
-                
-                return None
 
             
             
@@ -349,21 +411,7 @@ class Sync():
             
                 print("\n\n\n")
 
-        if args['model'] == "phi-3-vision-128k-instruct":
-            generation_args = { 
-                "max_new_tokens": args['max_new_tokens'], 
-                "temperature": 1.0, 
-                "do_sample": False, 
-            } 
-            
-            gen_output = self.mhold.model.generate(**args['tokens'], eos_token_id=self.mhold.processor.tokenizer.eos_token_id, **generation_args) 
-            
-            # remove input tokens 
-            generate_ids = gen_output[:, args['tokens']['input_ids'].shape[1]:]
-            response = self.mhold.processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0] 
-            
-            self.dhold.output_shape = generate_ids.shape
-            self.dhold.returned_content = [response.strip()]
+    
 
     def make_new_dhold(self):
         self.dhold = DataHolder()
