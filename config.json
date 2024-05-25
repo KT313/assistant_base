@@ -1,113 +1,68 @@
 {
+    "chat_templates": {
+        "llama-3": {
+            "init": "<|begin_of_text|>",
+            "roles as string": true,
+            "role start": "<|start_header_id|>",
+            "role end": "<|end_header_id|>\n\n",
+            "image token": "<image>\n",
+            "end text": "<|eot_id|>"
+        },
+        "hermes-2": {
+            "init": "",
+            "roles as string": true,
+            "role start": "<|im_start|>",
+            "role end": "\n",
+            "image token": "",
+            "end text": "<|im_end|>\n"
+        },
+        "phi-3": {
+            "init": "",
+            "roles as string": false,
+            "system role": "<|system|>\n",
+            "user role": "<|user|>\n",
+            "ai role": "<|assistant|>\n",
+            "image token": "<|image_1|>\n",
+            "end text": "<|end|>\n"
+        }
+    },
     "models": {
         "llama3-llava-next-8b": {
             "name": "llama3-llava-next-8b",
             "path": "/home/tobi/ai/models/multimodal/llama3-llava-next-8b",
-            "model_on_cuda": 16709526528,
-            "token_on_cuda": {
-                "1": 9428992,
-                "10": 17608192,
-                "100": 99400704,
-                "1000": 921989120
-            },
-            "input_text": "not tested",
-            "input_image": "optional"
-        },
-        "paligemma-3b-mix-448": {
-            "name": "paligemma-3b-mix-448",
-            "path": "/home/tobi/ai/models/multimodal/paligemma-3b-mix-448",
-            "model_on_cuda": 5861250560,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "input_text": "required",
-            "input_image": "required"
+            "template": "llama-3"
         },
         "Meta-Llama-3-70B-Instruct-IQ2_S": {
             "name": "Meta-Llama-3-70B-Instruct-IQ2_S",
             "path": "/home/tobi/ai/models/text_to_text/Meta-Llama-3-70B-Instruct-IQ2_S.gguf",
-            "model_on_cuda": "22231908352 for context 512, 23739760640 for context 4096",
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": "~492830720",
-                "1000": "~522190848 context 4096"
-            },
-            "context_len": "trained for 8192, set to 1024 for now for better speed due to higher memory usage with higher context length",
-            "input_text": "required",
-            "input_image": "no"
+            "template": "llama-3"
         },
         "Meta-Llama-3-70B-Instruct-IQ1_M": {
             "name": "Meta-Llama-3-70B-Instruct-IQ1_M",
             "path": "/home/tobi/ai/models/text_to_text/Meta-Llama-3-70B-Instruct-IQ1_M.gguf",
-            "model_on_cuda": 0,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "context_len": "trained for 8192, set to 1024 for now for better speed due to higher memory usage with higher context length",
-            "input_text": "required",
-            "input_image": "no"
+            "template": "llama-3"
         },
         "Hermes-2-Theta-Llama-3-8B": {
             "name": "Hermes-2-Theta-Llama-3-8B",
             "path": "/home/tobi/ai/models/text_to_text/Hermes-2-Theta-Llama-3-8B",
+            "template": "hermes-2",
             "system_prompt": "You are a helpful assistant.",
-            "functions": "You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {\"type\": \"function\", \"function\": {\"name\": \"get_web_info\", \"description\": \"get_web_info(symbol: str) -> dict - Get web results for a given query.\\n\\n    Args:\\n        query (str): The web search query.\\n\\n    Returns:\\n        dict: A dictionary containing web search results.\\n            Keys:\\n                - 'website': The first returned website.\\n                - 'website_content': The content of the website.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}} {\"type\": \"function\", \"function\": {\"name\": \"run_python\", \"description\": \"run_python(code: str) -> dict - Returns stdout and stderr from running the provided coda.\\n\\n    Args:\\n        code (str): The python code to run.\\n\\n    Returns:\\n        dict: A dictionary the outputs.\\n            Keys:\\n                - 'stdout': stdout from running the python code.\\n                - 'stderr': stderr from running the python code.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"code\": {\"type\": \"string\"}}, \"required\": [\"code\"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}, \"name\": {\"title\": \"Name\", \"type\": \"string\"}}, \"required\": [\"arguments\", \"name\"], \"title\": \"FunctionCall\", \"type\": \"object\"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"arguments\": <args-dict>, \"name\": <function-name>}\n</tool_call>",
-            "model_on_cuda": 0,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "context_len": 0,
-            "input_text": "required",
-            "input_image": "no"
+            "functions": "You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {\"type\": \"function\", \"function\": {\"name\": \"get_web_info\", \"description\": \"get_web_info(symbol: str) -> dict - Get web results for a given query.\\n\\n    Args:\\n        query (str): The web search query.\\n\\n    Returns:\\n        dict: A dictionary containing web search results.\\n            Keys:\\n                - 'website': The first returned website.\\n                - 'website_content': The content of the website.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}}} {\"type\": \"function\", \"function\": {\"name\": \"run_python\", \"description\": \"run_python(code: str) -> dict - Returns stdout and stderr from running the provided coda.\\n\\n    Args:\\n        code (str): The python code to run.\\n\\n    Returns:\\n        dict: A dictionary the outputs.\\n            Keys:\\n                - 'stdout': stdout from running the python code.\\n                - 'stderr': stderr from running the python code.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"code\": {\"type\": \"string\"}}, \"required\": [\"code\"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}, \"name\": {\"title\": \"Name\", \"type\": \"string\"}}, \"required\": [\"arguments\", \"name\"], \"title\": \"FunctionCall\", \"type\": \"object\"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"arguments\": <args-dict>, \"name\": <function-name>}\n</tool_call>"
         },
         "phi-3-mini-128k-instruct": {
             "name": "phi-3-mini-128k-instruct",
             "path": "/home/tobi/ai/models/text_to_text/Phi-3-mini-128k-instruct",
-            "model_on_cuda": 0,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "input_text": "required",
-            "input_image": "no"
+            "template": "phi-3"
         },
         "phi-3-medium-128k-instruct": {
             "name": "phi-3-medium-128k-instruct",
             "path": "/home/tobi/ai/models/text_to_text/Phi-3-medium-128k-instruct",
-            "model_on_cuda": 0,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "input_text": "required",
-            "input_image": "no"
+            "template": "phi-3"
         },
         "phi-3-vision-128k-instruct": {
             "name": "phi-3-vision-128k-instruct",
             "path": "/home/tobi/ai/models/multimodal/Phi-3-vision-128k-instruct",
-            "model_on_cuda": 0,
-            "token_on_cuda": {
-                "1": 0,
-                "10": 0,
-                "100": 0,
-                "1000": 0
-            },
-            "input_text": "not tested",
-            "input_image": "not tested"
+            "template": "phi-3"
         }
     },
     "max_new_tokens": 1024,

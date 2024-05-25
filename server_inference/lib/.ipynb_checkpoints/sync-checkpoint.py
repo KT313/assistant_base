@@ -16,130 +16,97 @@ class Sync():
 
         args = self.dhold.inputs
 
-        args['chat'] = [chat for chat in args['chat'] if chat['role'] != "System"]
-
         self.dhold.gen_inputs = args
 
         # check if model needs to be changed
-        if args['debugmode']:
-            print(args['model'], self.mhold.current_model, flush=True)
         if self.mhold == None or args['model'] != self.mhold.current_model or args['model_dtype'] != self.mhold.current_dtype:
             self.mhold = ModelHolder()
             self.mhold.load_model(self, args['model'], args['model_dtype'])
+        if args['debugmode']:
+            print(args['model'], self.mhold.current_model, flush=True)
+
+        # build prompt string
+        args['chat'] = [chat for chat in args['chat'] if chat['role'] != "System"]
+        for i in range(len(args['chat'])):
+            old_role = args['chat'][i]['role']
+            if old_role == "User":
+                args['chat'][i]['role'] = "user"
+            if old_role == "AI":
+                args['chat'][i]['role'] = "assistant"
+
+        if args['use_functions'] and "functions" in self.config['models'][self.mhold.current_model]:
+            args['chat'].insert(0, {'role': 'system', 'content': self.config['models'][self.mhold.current_model]['functions']})
+        elif 'manual_system_prompt' in args and args['manual_system_prompt'].strip() != "":
+            args['chat'].insert(0, {'role': 'system', 'content': args['manual_system_prompt'].strip()})
+        elif "system_prompt" in self.config['models'][self.mhold.current_model]:
+            args['chat'].insert(0, {'role': 'system', 'content': self.config['models'][self.mhold.current_model]['system_prompt']})
+        
+        template_type = self.config['models'][args['model']]['template']
+        template = self.config['chat_templates'][template_type]
+
+        prompt_string = ""
+        prompt_string += template['init']
+
+        if template['roles as string']:
+            for index, entry in enumerate(args['chat']):
+                image_string = ""
+                if index == (len(args['chat'])-1) and len(args['images']) > 0:
+                    image_string = template['image token']
+                prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{image_string}{entry['content']}{template['end text']}"
+            prompt_string += f"{template['role start']}assistant{template['role end']}"
+        else:
+            for index, entry in enumerate(args['chat']):
+                image_string = ""
+                if index == (len(args['chat'])-1) and len(args['images']) > 0:
+                    image_string = template['image token']
+                if entry['role'] == "system":
+                    role_token = template['system role']
+                elif entry['role'] == "user":
+                    role_token = template['user role']
+                elif entry['role'] == "assistant":
+                    role_token = template['ai role']
+                prompt_string += f"{role_token}{image_string}{entry['content']}{template['end text']}"
+            prompt_string += f"{template['ai role']}"
+
+        print(f"generated prompt string:\n\"{prompt_string}\"")
 
         if args['model'] == "llama3-llava-next-8b":
-            conv_template = "llava_llama_3"
-            conv = copy.deepcopy(conv_templates[conv_template])
-            for entry in args['chat'][:-1]:
-                if entry['role'] == "User":
-                    conv.append_message(conv.roles[0], entry['content'])
-                elif entry['role'] == "AI":
-                    conv.append_message(conv.roles[1], entry['content'])
-
-            if args['image'] == None:
-                question = args['chat'][-1]['content']
-                conv.append_message(conv.roles[0], question)
-                conv.append_message(conv.roles[1], None)
-                prompt_question = conv.get_prompt()                
-                tokens = tokenizer_image_token(prompt_question, self.mhold.tokenizer, return_tensors="pt").unsqueeze(0).to(self.config['torch_device'])
-                
-                self.dhold.gen_inputs['tokens'] = tokens
-                self.dhold.gen_inputs['image_tensor'] = None
-                self.dhold.gen_inputs['image_sizes'] = None
-                self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
-            
-            else:
-                image = Image.open(args['image'])
-                image_tensor = process_images([image], self.mhold.image_processor, self.mhold.model.config)
+            image_tensor = None
+            img_token_index = None
+            image_sizes = None
+            if len(args['images']) > 0:
+                image_tensor = process_images(args['images'], self.mhold.image_processor, self.mhold.model.config)
                 image_tensor = [_image.to(dtype=torch.float16, device=self.config['torch_device']) for _image in image_tensor]
-                
-                question = DEFAULT_IMAGE_TOKEN + f"\n{args['chat'][-1]['content']}"
-                conv.append_message(conv.roles[0], question)
-                conv.append_message(conv.roles[1], None)
-                prompt_question = conv.get_prompt()                
-                tokens = tokenizer_image_token(prompt_question, self.mhold.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(self.config['torch_device'])
-                image_sizes = [image.size]
+                image_sizes = [image.size for image in args['images']]
+                img_token_index = IMAGE_TOKEN_INDEX
 
-                self.dhold.gen_inputs['tokens'] = tokens
-                self.dhold.gen_inputs['image_tensor'] = image_tensor
-                self.dhold.gen_inputs['image_sizes'] = image_sizes
-                self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
                 
-            
-        if args['model'] == "paligemma-3b-mix-448":
-            if args['image'] == None:
-                self.dhold.error = True
-                self.dhold.error_info = "paligemma-3b-mix-448 only works if an image is provided"
-                return None
-            else:
-                prompt = args['chat'][-1]['content']
-                tokens = self.mhold.processor(text=prompt, images=image, return_tensors="pt").to(self.config['torch_device'])
+            tokens = tokenizer_image_token(prompt_string, self.mhold.tokenizer, img_token_index, return_tensors="pt").unsqueeze(0).to(self.config['torch_device'])
+            image_sizes = [image.size for image in args['images']]
 
-                self.dhold.gen_inputs['tokens'] = tokens
-                self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
+            self.dhold.gen_inputs['tokens'] = tokens
+            self.dhold.gen_inputs['image_tensor'] = image_tensor
+            self.dhold.gen_inputs['image_sizes'] = image_sizes
+            self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
 
         if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
-            conv_template = "llama_3_70b"
-            conv = copy.deepcopy(conv_templates[conv_template])
-            for entry in args['chat'][:-1]:
-                if entry['role'] == "User":
-                    conv.append_message(conv.roles[0], entry['content'])
-                elif entry['role'] == "AI":
-                    conv.append_message(conv.roles[1], entry['content'])
-            question = args['chat'][-1]['content']
-            conv.append_message(conv.roles[0], question)
-            conv.append_message(conv.roles[1], None)
-            prompt_question = conv.get_prompt()
 
-            self.dhold.gen_inputs['text'] = prompt_question
+            self.dhold.gen_inputs['text'] = prompt_string
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
-            new_chat = []
-            if args['use_functions'] and "functions" in self.config['models'][self.mhold.current_model]:
-                new_chat.append({'role': 'system', 'content': self.config['models'][self.mhold.current_model]['functions']})
-            elif 'manual_system_prompt' in args and args['manual_system_prompt'].strip() != "":
-                new_chat.append({'role': 'system', 'content': args['manual_system_prompt']})
-            elif "system_prompt" in self.config['models'][self.mhold.current_model]:
-                new_chat.append({'role': 'system', 'content': self.config['models'][self.mhold.current_model]['system_prompt']})
-            
-            for entry in args['chat']:
-                if entry['role'] == "User":
-                    new_chat.append({'role': 'user', 'content': entry['content']})
-                if entry['role'] == "AI":
-                    new_chat.append({'role': 'assistant', 'content': entry['content']})
 
-            args['chat'] = new_chat
-
-            chat_string = ""
-            
-            for entry in args['chat']:
-                chat_string += f"<|im_start|>{entry['role']}\n"
-                chat_string += f"{entry['content']}<|im_end|>\n"
-            chat_string += f"<|im_start|>assistant\n"
-
-            if args['debugmode']:
-                print(chat_string, flush=True)
-            
-            tokens = self.mhold.tokenizer(chat_string, return_tensors="pt").input_ids.to(self.config['torch_device'])
+            tokens = self.mhold.tokenizer(prompt_string, return_tensors="pt").input_ids.to(self.config['torch_device'])
             
             self.dhold.gen_inputs['tokens'] = tokens
             self.dhold.gen_inputs['beam_config'] = args['beam_config']
             self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
 
         if args['model'] == "phi-3-vision-128k-instruct":
+            image_input = None
             if len(args['images']) > 0:
-                to_add_for_images = ""
-                for i in range(len(args['images'])):
-                    to_add_for_images += f"<|image_{i+1}|>\n"
-                args['chat'][-1]['content'] = to_add_for_images+args['chat'][-1]['content']
-            prompt = self.mhold.processor.tokenizer.apply_chat_template(args['chat'], tokenize=False, add_generation_prompt=True)
-
-            print("prompt:", prompt)
-
-            if len(args['images']) > 0:
-                tokens = self.mhold.processor(prompt, args['images'], return_tensors="pt").to(self.config['torch_device'])
-            else:
-                tokens = self.mhold.processor(prompt, return_tensors="pt").to(self.config['torch_device'])
+                image_input = args['images']
+            
+            tokens = self.mhold.processor(prompt_string, image_input, return_tensors="pt").to(self.config['torch_device'])
 
             self.dhold.gen_inputs['tokens'] = tokens
             self.dhold.input_shape = self.dhold.gen_inputs['tokens'].input_ids.shape
@@ -154,8 +121,8 @@ class Sync():
 
         batched_input_tokens = torch.concatenate((args['tokens'].repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices, device=self.config['torch_device']).unsqueeze(1)), dim=-1)
         batched_input_masks = torch.ones_like(batched_input_tokens, device=self.config['torch_device'])
-                
-            
+        
+        
         beam_output = self.mhold.model.generate(
             batched_input_tokens,
             attention_mask = batched_input_masks,
@@ -207,58 +174,63 @@ class Sync():
         # model
         # gen_inputs
 
-        # llama3-llava-next-8b
+        generated_tokens = 0
+
+        max_num_beams = int(args['beam_config']['max_num_beams'].strip())
+        depth_beams = int(args['beam_config']['depth_beams'].strip())
+        min_conf_for_sure = float(args['beam_config']['min_conf_for_sure'].strip())
+        min_conf_for_consider = float(args['beam_config']['min_conf_for_consider'].strip())
+        prob_sum_for_search = float(args['beam_config']['prob_sum_for_search'].strip())
+
+        args['max_num_beams'] = max_num_beams
+        args['depth_beams'] = depth_beams
+        args['min_conf_for_sure'] = min_conf_for_sure
+        args['min_conf_for_consider'] = min_conf_for_consider
+        args['prob_sum_for_search'] = prob_sum_for_search
+
+        gen_kwargs = {
+            'max_new_tokens': args['max_new_tokens'],
+            'do_sample': False,
+            'temperature': 1,
+        }
+        got_input_shape_already = True
+    
         if args['model'] == "llama3-llava-next-8b":
-            if args['image_tensor'] != None:  
-                pass
-            else:
-                cont = self.mhold.model.generate(
-                    args['tokens'],
-                    do_sample=False,
-                    temperature=0,
-                    max_new_tokens=args['max_new_tokens'],
-                )
+            gen_kwargs.update({
+                'images': args['image_tensor'],
+                'image_sizes': args['image_sizes'],
+            })
+            gen_function = self.mhold.model.generate
+            gen_input = args['tokens']
+            output_processor = lambda output: self.mhold.tokenizer.batch_decode(output, skip_special_tokens=True)
+            shape_attr = 'shape'
+        else:
+            del gen_kwargs['max_new_tokens']
+            del gen_kwargs['do_sample']
+            gen_kwargs.update({
+                'max_tokens': args['max_new_tokens'],
+                'stop': ["<|eot_id|>", "<|end_of_text|>"],
+                'echo': False,
+                'top_k': 1,
+            })
+            got_input_shape_already = False
+            gen_function = self.mhold.model
+            gen_input = args['text']
+            output_processor = lambda output: [out['text'] for out in output['choices']]
+            shape_attr = lambda output: [1, output['usage']['completion_tokens']]
+            input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
+            # self.dhold.input_shape = [1, gen_output['usage']['prompt_tokens']]
 
-            self.dhold.output_shape = cont.shape
-            text_outputs = self.mhold.tokenizer.batch_decode(cont, skip_special_tokens=True)
-            self.dhold.returned_content = [entry.strip() for entry in text_outputs]
-            if args['debugmode']:
-                print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
-
-        if args['model'] == "paligemma-3b-mix-448":
-            input_len = args['tokens']['input_ids'].shape[-1]
-            generation = self.mhold.model.generate(**args['tokens'], max_new_tokens=args['max_new_tokens'], do_sample=False)
-            self.dhold.output_shape = generation.shape
-            generation = generation[0][input_len:]
-            text_outputs = [self.mhold.processor.decode(generation, skip_special_tokens=True)]
-            self.dhold.returned_content = [entry.strip() for entry in text_outputs]
-
-        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
-            output = self.mhold.model(
-              args['text'], # Prompt
-              max_tokens=args['max_new_tokens'],
-              stop=["<|eot_id|>", "<|end_of_text|>"],
-              echo=False
-            )
-            self.dhold.returned_content = [out['text'] for out in output['choices']]
-            self.dhold.output_shape = [1, output['usage']['completion_tokens']]
-            self.dhold.input_shape = [1, output['usage']['prompt_tokens']]
-
+        gen_output = gen_function(gen_input, **gen_kwargs)
+        self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
+        if not got_input_shape_already:
+            self.dhold.input_shape = input_shape_attr(gen_output)
+        self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)
+    
+        if args['debugmode']:
+            print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
+        
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
-
-            generated_tokens = 0
-
-            max_num_beams = int(args['beam_config']['max_num_beams'].strip())
-            depth_beams = int(args['beam_config']['depth_beams'].strip())
-            min_conf_for_sure = float(args['beam_config']['min_conf_for_sure'].strip())
-            min_conf_for_consider = float(args['beam_config']['min_conf_for_consider'].strip())
-            prob_sum_for_search = float(args['beam_config']['prob_sum_for_search'].strip())
-
-            args['max_num_beams'] = max_num_beams
-            args['depth_beams'] = depth_beams
-            args['min_conf_for_sure'] = min_conf_for_sure
-            args['min_conf_for_consider'] = min_conf_for_consider
-            args['prob_sum_for_search'] = prob_sum_for_search
 
             original_input_len = args['tokens'].shape[-1]
             attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
@@ -271,7 +243,7 @@ class Sync():
                 print("input:", self.mhold.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True))
 
             if not args['beam_config']['use_beam_search']:
-                output = self.mhold.model.generate(
+                gen_output = self.mhold.model.generate(
                     args['tokens'],
                     attention_mask = attn_mask,
                     max_new_tokens=args['max_new_tokens'],
@@ -284,8 +256,8 @@ class Sync():
                     return_dict_in_generate=True,
                     pad_token_id = 128003
                 )
-                response = self.mhold.tokenizer.decode(output.sequences[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
-                self.dhold.output_shape = output.sequences[0][original_input_len:].shape
+                response = self.mhold.tokenizer.decode(gen_output.sequences[0][original_input_len:], skip_special_tokens=True, clean_up_tokenization_space=True)
+                self.dhold.output_shape = gen_output.sequences[0][original_input_len:].shape
                 self.dhold.returned_content = [response.strip()]
                 
                 return None
@@ -295,7 +267,7 @@ class Sync():
             for step in range(args['max_new_tokens']):
 
                 # custom beam search                
-                output = self.mhold.model.generate(
+                gen_output = self.mhold.model.generate(
                     args['tokens'],
                     attention_mask = attn_mask,
                     max_new_tokens=1,
@@ -309,7 +281,7 @@ class Sync():
                     pad_token_id = 128003
                 )
     
-                probabilities, indices = torch.topk(torch.softmax(output.scores[0].detach(), dim=-1), k=8)
+                probabilities, indices = torch.topk(torch.softmax(gen_output.scores[0].detach(), dim=-1), k=8)
                 considered_tokens_probs = []
                 considered_tokens_indices = []
                 for i in range(max_num_beams):
@@ -384,10 +356,10 @@ class Sync():
                 "do_sample": False, 
             } 
             
-            generate_ids = self.mhold.model.generate(**args['tokens'], eos_token_id=self.mhold.processor.tokenizer.eos_token_id, **generation_args) 
+            gen_output = self.mhold.model.generate(**args['tokens'], eos_token_id=self.mhold.processor.tokenizer.eos_token_id, **generation_args) 
             
             # remove input tokens 
-            generate_ids = generate_ids[:, args['tokens']['input_ids'].shape[1]:]
+            generate_ids = gen_output[:, args['tokens']['input_ids'].shape[1]:]
             response = self.mhold.processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0] 
             
             self.dhold.output_shape = generate_ids.shape
