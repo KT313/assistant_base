@@ -23,17 +23,14 @@ class Sync():
         if self.mhold == None or args['model'] != self.mhold.current_model or args['model_dtype'] != self.mhold.current_dtype:
             self.mhold = ModelHolder()
             self.mhold.load_model(self, args['model'], args['model_dtype'])
-        if args['debugmode']:
-            print(args['model'], self.mhold.current_model, flush=True)
+        if args['debugmode']: print(args['model'], self.mhold.current_model, flush=True)
 
         # build prompt string
         args['chat'] = [chat for chat in args['chat'] if chat['role'] != "System"]
         for i in range(len(args['chat'])):
             old_role = args['chat'][i]['role']
-            if old_role == "User":
-                args['chat'][i]['role'] = "user"
-            if old_role == "AI":
-                args['chat'][i]['role'] = "assistant"
+            if old_role == "User": args['chat'][i]['role'] = "user"
+            if old_role == "AI": args['chat'][i]['role'] = "assistant"
 
         if args['use_functions'] and "functions" in self.config['models'][self.mhold.current_model]:
             args['chat'].insert(0, {'role': 'system', 'content': self.config['models'][self.mhold.current_model]['functions']})
@@ -166,6 +163,9 @@ class Sync():
 
         return prediction_paths_probs[best_beam], prediction_paths_indices[best_beam]
 
+
+
+    # sets dhold.returned_content, dhold.output_shape, self.dhold.logits (and maybe dhold.input_shape)
     def generate(self, limit_tokens=None):
         self.dhold.start_time_inference = time.time()
         if self.dhold.error:
@@ -173,11 +173,6 @@ class Sync():
         args = self.dhold.gen_inputs
         if limit_tokens != None:
             args['max_new_tokens'] = limit_tokens
-        # args should contain:
-        # model
-        # gen_inputs
-
-        # general settings
 
         generated_tokens = 0
 
@@ -202,28 +197,50 @@ class Sync():
         }
         got_input_shape_already = True
 
-        
 
+        
         # model specific settings
         if not args['beam_config']['use_beam_search']:
-            
-            if args['model'] == "llama3-llava-next-8b":
-                print(args['tokens'].shape)
+
+            if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]:
+                gen_function = self.mhold.model.generate
+                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
+
+            if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B"]:
                 original_input_len = args['tokens'].shape[-1]
                 attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
                 gen_kwargs.update({
-                    'images': args['image_tensor'],
-                    'image_sizes': args['image_sizes'],
-                    'attention_mask': attn_mask,
                     'num_beams': 1,
+                    'attention_mask': attn_mask,
                     'pad_token_id': self.mhold.tokenizer.eos_token_id,
                 })
-                gen_function = self.mhold.model.generate
                 gen_input = args['tokens']
-                # output_processor = lambda output: self.mhold.tokenizer.batch_decode(output, skip_special_tokens=True)
+            
+            if args['model'] == "llama3-llava-next-8b":
+                gen_kwargs.update({
+                    'images': args['image_tensor'],
+                    'image_sizes': args['image_sizes'],
+                    
+                })
                 output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][:], skip_special_tokens=True) for i in range(len(output.sequences))]
                 shape_attr = lambda output: output.sequences[0][:].shape
-                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
+
+            
+                
+            if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][original_input_len:], skip_special_tokens=True) for i in range(len(output.sequences))]
+                shape_attr = lambda output: output.sequences[0][original_input_len:].shape
+
+            if args['model'] == "phi-3-vision-128k-instruct":
+                gen_kwargs.update({
+                    'attention_mask': args['tokens'].attention_mask,
+                    'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
+                    'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
+                    'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
+                })
+                gen_input = args['tokens'].input_ids
+                output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
+                shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
                 
             if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
                 del gen_kwargs['max_new_tokens']
@@ -232,7 +249,7 @@ class Sync():
                 del gen_kwargs['return_dict_in_generate']
                 gen_kwargs.update({
                     'max_tokens': args['max_new_tokens'],
-                    'stop': ["<|eot_id|>", "<|end_of_text|>"],
+                    'stop': ["<|eot_id|>"],
                     'echo': False,
                     'top_k': 1,
                     'logprobs': -1,
@@ -244,56 +261,15 @@ class Sync():
                 shape_attr = lambda output: [1, output['usage']['completion_tokens']]
                 input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
                 get_logits = lambda scores: find_top_indexes(self.mhold.model._scores[-self.dhold.output_shape[-1]:], max_num_beams)
-                
-            if args['model'] == "Hermes-2-Theta-Llama-3-8B":
-                original_input_len = args['tokens'].shape[-1]
-                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
-                
-                gen_kwargs.update({
-                    'attention_mask': attn_mask,
-                    'num_beams': 1,
-                    'eos_token_id': self.mhold.tokenizer.eos_token_id,
-                    'output_scores': True,
-                    'return_dict_in_generate': True,
-                    'pad_token_id': 128003
-                })
-                gen_function = self.mhold.model.generate
-                gen_input = args['tokens']
-                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][original_input_len:], skip_special_tokens=True) for i in range(len(output.sequences))]
-                shape_attr = lambda output: output.sequences[0][original_input_len:].shape
-                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
 
-            if args['model'] == "phi-3-vision-128k-instruct":
-                gen_kwargs.update({
-                    'attention_mask': args['tokens'].attention_mask,
-                    'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
-                    'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
-                    'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
-                })
-                gen_function = self.mhold.model.generate
-                gen_input = args['tokens'].input_ids
-                output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
-                shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
-                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
-    
-            
             gen_output = gen_function(gen_input, **gen_kwargs)
 
             self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
             self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
-            
             self.dhold.logits = get_logits(gen_output)
-            print(f"logits:\n{self.dhold.logits}")
-            # for ls in self.dhold.logits:
-            #     for val in ls:
-            #         print(val[0], self.mhold.tokenizer.decode(val[0]))
-            #     print()
             
-            if not got_input_shape_already:
-                self.dhold.input_shape = input_shape_attr(gen_output)
-        
-            if args['debugmode']:
-                print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
+            if not got_input_shape_already: self.dhold.input_shape = input_shape_attr(gen_output)
+            if args['debugmode']: print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
 
         else:
             pass
@@ -310,19 +286,6 @@ class Sync():
 
 
 
-        
-        
-        if args['model'] == "Hermes-2-Theta-Llama-3-8B":
-
-            original_input_len = args['tokens'].shape[-1]
-            attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
-
-            reached_token_limit = False
-
-            num_beams_this_run = max_num_beams
-            
-            if args['debugmode']:
-                print("input:", self.mhold.tokenizer.decode(args['tokens'][0], skip_special_tokens=False, clean_up_tokenization_space=True))
 
             
             

@@ -31,9 +31,8 @@ class ModelHolder():
             pretrained = sync.config['models'][model_name]['path']
             model = Llama(
                 model_path=pretrained,
-                n_gpu_layers=-1, # Uncomment to use GPU acceleration
-                # seed=1337, # Uncomment to set a specific seed
-                n_ctx=1024, # Uncomment to increase the context window
+                n_gpu_layers=-1,
+                n_ctx=1024,
                 logits_all=True,
                 flash_attn=True,
             )
@@ -44,45 +43,23 @@ class ModelHolder():
             pretrained = sync.config['models'][model_name]['path']
             tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
     
-            if dtype == "float16":
-                torch_dtype = torch.float16
-            elif dtype == "bfloat16":
-                torch_dtype = torch.bfloat16
-            else:
-                torch_dtype = None
+            if dtype == "float16": torch_dtype = torch.float16
+            elif dtype == "bfloat16": torch_dtype = torch.bfloat16
+            else: torch_dtype = None
             
-            if dtype == "8bit":
-                bnb_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                )
-            elif dtype == "4bit":
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16
-                )
-            else:
-                bnb_config = None
+            if dtype == "8bit": bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            elif dtype == "4bit": bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_use_double_quant=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)
+            else: bnb_config = None
                 
-            model = LlamaForCausalLM.from_pretrained(
-                pretrained,
-                torch_dtype=torch_dtype,
-                device_map=sync.config['torch_device_map'],
-                quantization_config=bnb_config,
-                use_flash_attention_2=True
-            )
+            model = LlamaForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, use_flash_attention_2=True)
             
             self.tokenizer = tokenizer
             self.model = model
             self.preprocessor_type = "tokenizer"
 
         if model_name == "phi-3-vision-128k-instruct":
-            if model_name == "phi-3-vision-128k-instruct":
-                model_class = AutoModelForCausalLM
-
             pretrained = sync.config['models'][model_name]['path']
-            self.model = model_class.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
+            self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
             self.processor = AutoProcessor.from_pretrained(pretrained, trust_remote_code=True) 
             self.preprocessor_type = "processor"
             
