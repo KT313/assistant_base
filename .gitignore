@@ -2,7 +2,9 @@ run_llava.ipynb
 test.ipynb
 server_inference/server.ipynb
 server_inference/Untitled.ipynb
-.ipynb_checkpoints/
-__pycache__/
-**/.ipynb_checkpoints/
-**/__pycache__/
+.ipynb_checkpoints
+__pycache__
+**/.ipynb_checkpoints
+**/**/.ipynb_checkpoints
+**/__pycache__
+**/**/__pycache__
