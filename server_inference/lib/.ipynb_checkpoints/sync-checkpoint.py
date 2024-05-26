@@ -25,6 +25,22 @@ class Sync():
             self.mhold.load_model(self, args['model'], args['model_dtype'])
         if args['debugmode']: print(args['model'], self.mhold.current_model, flush=True)
 
+
+
+        max_num_beams = int(args['beam_config']['max_num_beams'].strip())
+        depth_beams = int(args['beam_config']['depth_beams'].strip())
+        min_conf_for_sure = float(args['beam_config']['min_conf_for_sure'].strip())
+        min_conf_for_consider = float(args['beam_config']['min_conf_for_consider'].strip())
+        prob_sum_for_search = float(args['beam_config']['prob_sum_for_search'].strip())
+
+        args['max_num_beams'] = max_num_beams
+        args['depth_beams'] = depth_beams
+        args['min_conf_for_sure'] = min_conf_for_sure
+        args['min_conf_for_consider'] = min_conf_for_consider
+        args['prob_sum_for_search'] = prob_sum_for_search
+
+        
+
         # build prompt string
         args['chat'] = [chat for chat in args['chat'] if chat['role'] != "System"]
         for i in range(len(args['chat'])):
@@ -111,16 +127,30 @@ class Sync():
 
         self.dhold.gen_inputs['model'] = args['model']
 
-    def get_best_path(self, args, considered_tokens_probs, considered_tokens_indices, stop_token):
+    def get_best_path(self):
+
+        args = self.dhold.gen_inputs
+        considered_tokens_probs = self.dhold.considered_tokens_probs
+        considered_tokens_indices = self.dhold.considered_tokens_indices
+        stop_token = self.mhold.stop_token
+        
         total_probs  = []
         prediction_paths_probs = []
         prediction_paths_indices = []
         skip_path = []
 
-        batched_input_tokens = torch.concatenate((args['tokens'].repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices, device=self.config['torch_device']).unsqueeze(1)), dim=-1)
+        tokens = None
+        try:
+            tokens = args['tokens'].input_ids
+        except:
+            tokens = args['tokens']
+
+        batched_input_tokens = torch.concatenate((tokens.repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices, device=self.config['torch_device']).unsqueeze(1)), dim=-1)
         batched_input_masks = torch.ones_like(batched_input_tokens, device=self.config['torch_device'])
-        
-        
+
+        self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+
+        a = """
         beam_output = self.mhold.model.generate(
             batched_input_tokens,
             attention_mask = batched_input_masks,
@@ -133,7 +163,7 @@ class Sync():
             output_scores=True,
             return_dict_in_generate=True,
             pad_token_id = stop_token
-        )
+        )"""
 
         for i in range(len(considered_tokens_probs)):
             # case considered token is stop token:
@@ -146,10 +176,11 @@ class Sync():
                 
             highest_path_probs = []
             highest_path_indices = []
-            for token_num in range(len(beam_output.scores)):
-                beam_probabilities, beam_indices = torch.topk(torch.softmax(beam_output.scores[token_num][i], dim=-1), k=args['max_num_beams'])
-                highest_path_probs.append(math.log(beam_probabilities.tolist()[0]))
-                highest_path_indices.append(beam_indices.tolist()[0])
+            for token_num in range(len(self.dhold.logits)):
+                # beam_probabilities, beam_indices = torch.topk(torch.softmax(self.dhold.logits[token_num][i], dim=-1), k=args['max_num_beams'])
+                # highest_path_probs.append(math.log(beam_probabilities.tolist()[0]))
+                # highest_path_indices.append(beam_indices.tolist()[0])
+                pass
             total_prob = math.log(considered_tokens_probs[i])
             total_prob += sum(highest_path_probs)
             total_probs.append(total_prob)
@@ -161,12 +192,12 @@ class Sync():
 
         best_beam = max(enumerate(total_probs),key=lambda x: x[1])[0]
 
-        return prediction_paths_probs[best_beam], prediction_paths_indices[best_beam]
+        self.dhold.best_beam_probs = prediction_paths_probs[best_beam]
+        self.dhold.best_beam_indices = prediction_paths_indices[best_beam]
 
+        
 
-
-    # sets dhold.returned_content, dhold.output_shape, self.dhold.logits (and maybe dhold.input_shape)
-    def generate(self, limit_tokens=None):
+    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None):
         self.dhold.start_time_inference = time.time()
         if self.dhold.error:
             return None
@@ -176,17 +207,7 @@ class Sync():
 
         generated_tokens = 0
 
-        max_num_beams = int(args['beam_config']['max_num_beams'].strip())
-        depth_beams = int(args['beam_config']['depth_beams'].strip())
-        min_conf_for_sure = float(args['beam_config']['min_conf_for_sure'].strip())
-        min_conf_for_consider = float(args['beam_config']['min_conf_for_consider'].strip())
-        prob_sum_for_search = float(args['beam_config']['prob_sum_for_search'].strip())
-
-        args['max_num_beams'] = max_num_beams
-        args['depth_beams'] = depth_beams
-        args['min_conf_for_sure'] = min_conf_for_sure
-        args['min_conf_for_consider'] = min_conf_for_consider
-        args['prob_sum_for_search'] = prob_sum_for_search
+        self.mhold.stop_token = None
 
         gen_kwargs = {
             'max_new_tokens': args['max_new_tokens'],
@@ -196,94 +217,198 @@ class Sync():
             'return_dict_in_generate': True,
         }
         got_input_shape_already = True
-
+        
 
         
-        # model specific settings
-        if not args['beam_config']['use_beam_search']:
 
-            if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]:
-                gen_function = self.mhold.model.generate
-                get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=max_num_beams)
+        if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]:
+            gen_function = self.mhold.model.generate
+            get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=args['max_num_beams'])
 
-            if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B"]:
-                original_input_len = args['tokens'].shape[-1]
-                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
-                gen_kwargs.update({
-                    'num_beams': 1,
-                    'attention_mask': attn_mask,
-                    'pad_token_id': self.mhold.tokenizer.eos_token_id,
-                })
-                gen_input = args['tokens']
-            
-            if args['model'] == "llama3-llava-next-8b":
-                gen_kwargs.update({
-                    'images': args['image_tensor'],
-                    'image_sizes': args['image_sizes'],
-                    
-                })
-                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][:], skip_special_tokens=True) for i in range(len(output.sequences))]
-                shape_attr = lambda output: output.sequences[0][:].shape
-
-            
+        if args['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B"]:
+            original_input_len = args['tokens'].shape[-1]
+            attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+            gen_kwargs.update({
+                'num_beams': 1,
+                'attention_mask': attn_mask,
+                'pad_token_id': self.mhold.tokenizer.eos_token_id,
+            })
+            gen_input = args['tokens']
+            self.mhold.stop_token = self.mhold.tokenizer.eos_token_id
+        
+        if args['model'] == "llama3-llava-next-8b":
+            gen_kwargs.update({
+                'images': args['image_tensor'],
+                'image_sizes': args['image_sizes'],
                 
-            if args['model'] == "Hermes-2-Theta-Llama-3-8B":
-                output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][original_input_len:], skip_special_tokens=True) for i in range(len(output.sequences))]
-                shape_attr = lambda output: output.sequences[0][original_input_len:].shape
+            })
+            output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][:], skip_special_tokens=True) for i in range(len(output.sequences))]
+            shape_attr = lambda output: output.sequences[0][:].shape
 
-            if args['model'] == "phi-3-vision-128k-instruct":
-                gen_kwargs.update({
-                    'attention_mask': args['tokens'].attention_mask,
-                    'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
-                    'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
-                    'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
-                })
-                gen_input = args['tokens'].input_ids
-                output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
-                shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
-                
-            if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
-                del gen_kwargs['max_new_tokens']
-                del gen_kwargs['do_sample']
-                del gen_kwargs['output_scores']
-                del gen_kwargs['return_dict_in_generate']
-                gen_kwargs.update({
-                    'max_tokens': args['max_new_tokens'],
-                    'stop': ["<|eot_id|>"],
-                    'echo': False,
-                    'top_k': 1,
-                    'logprobs': -1,
-                })
-                got_input_shape_already = False
-                gen_function = self.mhold.model
-                gen_input = args['text']
-                output_processor = lambda output: [out['text'] for out in output['choices']]
-                shape_attr = lambda output: [1, output['usage']['completion_tokens']]
-                input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
-                get_logits = lambda scores: find_top_indexes(self.mhold.model._scores[-self.dhold.output_shape[-1]:], max_num_beams)
-
-            gen_output = gen_function(gen_input, **gen_kwargs)
-
-            self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
-            self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
-            self.dhold.logits = get_logits(gen_output)
+        
             
-            if not got_input_shape_already: self.dhold.input_shape = input_shape_attr(gen_output)
-            if args['debugmode']: print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
+        if args['model'] == "Hermes-2-Theta-Llama-3-8B":
+            output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][original_input_len:], skip_special_tokens=True) for i in range(len(output.sequences))]
+            shape_attr = lambda output: output.sequences[0][original_input_len:].shape
 
+        if args['model'] == "phi-3-vision-128k-instruct":
+            gen_kwargs.update({
+                'attention_mask': args['tokens'].attention_mask,
+                'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
+                'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
+                'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
+            })
+            self.mhold.stop_token = self.mhold.processor.tokenizer.eos_token_id
+            gen_input = args['tokens'].input_ids
+            output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
+            shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
+            
+        if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
+            del gen_kwargs['max_new_tokens']
+            del gen_kwargs['do_sample']
+            del gen_kwargs['output_scores']
+            del gen_kwargs['return_dict_in_generate']
+            gen_kwargs.update({
+                'max_tokens': args['max_new_tokens'],
+                'stop': ["<|eot_id|>"],
+                'echo': False,
+                'top_k': 1,
+                'logprobs': -1,
+            })
+            self.mhold.stop_token = self.mhold.model.tokenize("<|eot_id|>".encode('UTF-8'))
+            got_input_shape_already = False
+            gen_function = self.mhold.model
+            gen_input = args['text']
+            output_processor = lambda output: [out['text'] for out in output['choices']]
+            shape_attr = lambda output: [1, output['usage']['completion_tokens']]
+            input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
+            get_logits = lambda scores: find_top_indexes(self.mhold.model._scores[-self.dhold.output_shape[-1]:], args['max_num_beams'])
+
+        if self.mhold.stop_token == None:
+            raise Error('did/could not assign stop token')
+
+        if alternative_input != None:
+            gen_input = alternative_input
+
+        if alternative_mask != None:
+            gen_kwargs.update({
+                'attention_mask': alternative_mask,
+            })
+
+        gen_output = gen_function(gen_input, **gen_kwargs)
+
+        self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
+        self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
+        self.dhold.logits = get_logits(gen_output)
+
+        self.dhold.considered_tokens_probs = []
+        self.dhold.considered_tokens_indices = []
+
+        if not isinstance(self.dhold.logits[0][0], list):
+            self.dhold.logits_probs = [[x[1] for x in token_logits] for token_logits in self.dhold.logits]
+            self.dhold.logits_indices = [[x[0] for x in token_logits] for token_logits in self.dhold.logits]
+            for i in range(args['max_num_beams']):
+                if self.dhold.logits_probs[0][i] >= args['min_conf_for_consider']:
+                    if self.dhold.generated_tokens == 0 and self.dhold.logits_indices[0][i] == self.mhold.stop_token:
+                        continue
+                    self.dhold.considered_tokens_probs.append(self.dhold.logits_probs[0][i])
+                    self.dhold.considered_tokens_indices.append(self.dhold.logits_indices[0][i])
+                if sum(self.dhold.considered_tokens_probs) >= args['prob_sum_for_search']:
+                    break
         else:
-            pass
+            self.dhold.logits_probs = [[[x[1] for x in token_logits] for token_logits in batch_logits] for batch_logits in self.dhold.logits]
+            self.dhold.logits_indices = [[[x[0] for x in token_logits] for token_logits in batch_logits] for batch_logits in self.dhold.logits]
+            for i in range(len(self.dhold.logits_probs[0])):
+                for j in range(len(self.dhold.logits_probs[0][i])):
+                    self.dhold.considered_tokens_probs.append([])
+                    self.dhold.considered_tokens_indices.append([])
+                    if self.dhold.logits_probs[0][i][j] >= args['min_conf_for_consider']:
+                        if self.dhold.generated_tokens == 0 and self.dhold.logits_indices[0][i] == self.mhold.stop_token:
+                            continue
+                        self.dhold.considered_tokens_probs[i].append(self.dhold.logits_probs[0][i][j])
+                        self.dhold.considered_tokens_indices[i].append(self.dhold.logits_indices[0][i][j])
+                    if sum(self.dhold.considered_tokens_probs[i]) >= args['prob_sum_for_search']:
+                        break
+
+        
+
+        
+        
+        if not got_input_shape_already: self.dhold.input_shape = input_shape_attr(gen_output)
+        if args['debugmode']: print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
 
 
-        return None
+
+    # sets dhold.returned_content, dhold.output_shape, self.dhold.logits (and maybe dhold.input_shape)
+    def generate(self):
+        
+        # if normal
+        # generate no limit
+        args = self.dhold.gen_inputs
+        if not args['beam_config']['use_beam_search']:
+            self.do_inference()
+        # 
+        else:
+            self.dhold.generated_tokens = 0
+            while self.dhold.generated_tokens < args['max_new_tokens']:
+                # generate limit 1 token
+                self.do_inference(limit_tokens=1)
+                # use logits to get best path
+        
+                if len(self.dhold.considered_tokens_indices) == 1:
+                    self.dhold.tokens_to_add = [self.dhold.considered_tokens_indices[0]]
+                    self.dhold.best_path_indices = self.dhold.tokens_to_add
+                    self.dhold.additional_sure_tokens = 0
+                    
+                else:
+                    self.get_best_path()
+        
+                    self.dhold.tokens_to_add = [self.dhold.best_beam_indices[0]] # at least at the init token for the best path
+                    self.dhold.additional_sure_tokens = 0
+                    for i in range(1, len(self.dhold.best_beam_indices)): # skip 0 since already added
+                        if self.dhold.best_beam_probs[i] >= math.log(args['min_conf_for_sure']):
+                            self.dhold.additional_sure_tokens += 1
+                            self.dhold.tokens_to_add.append(self.dhold.best_beam_indices[i])
+                        else:
+                            break
+                        
+                self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
+        
+        
+        
+        
+        
+                args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).unsqueeze(0)), dim=-1)
+                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+        
+                if args['debugmode']:
+                    print(" | ".join([str(round(entry, 5)).ljust(14) for entry in self.dhold.logits_probs[0]]))
+                    print(" | ".join([self.mhold.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_indices[0]]))
+                    if len(self.dhold.considered_tokens_indices) == 1:
+                        print("-> single considered token, not doing beam search")
+                    else:
+                        print(f"-> using {len(self.dhold.considered_tokens_indices)} beams")
+        
+                    print("\n")
+                    print(f"current generation: {self.mhold.tokenizer.decode(args['tokens'][0][original_input_len:-len(tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.tokenizer.decode(best_path_indices[1+additional_sure_tokens:], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                    print("\n\n\n")
+        
+                if 128003 in tokens_to_add:
+                    if args['debugmode']:
+                        print("tokens to add contained stop token, stopping.")
+                    break
+                
+                if generated_tokens >= args['max_new_tokens']:
+                    reached_token_limit = True
+                    if args['debugmode']:
+                        print("reached max_new_tokens, stopping.")
+                    break
 
 
 
 
 
-
-
-
+        """
 
 
 
@@ -374,7 +499,9 @@ class Sync():
             
                 print("\n\n\n")
 
-    
+        """
+
+        
 
     def make_new_dhold(self):
         self.dhold = DataHolder()
