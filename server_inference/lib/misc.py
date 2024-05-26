@@ -108,17 +108,9 @@ def base64_to_pil(base64_images):
     return pil_images
 
 
-
+# returns np array: (batch_dim, token_index, logit_index, (token, probability))
 def find_top_indexes(arr, n_top):
-    batch = False
-    print(arr)
-    if isinstance(arr, list) and isinstance(arr[0], np.ndarray):
-        # print("is np array")
-        if arr[0].shape[0] > 1:
-            batch = True
-            arr = [entry.tolist() for entry in arr]
-        else:
-            arr = [entry.squeeze(0).tolist() for entry in arr]
+    arr = np.array(arr)
 
     arr = np.array(arr)
     nan_mask = np.isnan(arr)
@@ -126,29 +118,12 @@ def find_top_indexes(arr, n_top):
 
     softmax_arr = softmax(arr, axis=-1)
     top_indexes = np.argsort(softmax_arr)[..., -n_top:]
-    result = []
-    print("top indexes:\n", top_indexes, top_indexes.shape)
-    print("nan mask:\n", nan_mask, nan_mask.shape)
 
-    if not batch:
-        for i, row_indexes in enumerate(top_indexes):
-            row_result = []
-            for index in row_indexes:
-                if not nan_mask[i, index]:
-                    row_result.append((index, softmax_arr[i, index]))
-            row_result.sort(key=lambda x: x[1], reverse=True)
-            result.append(row_result)
-    else:
-        for batch_num, batch_indexes in enumerate(top_indexes):
-            batch_result = []
-            for i, row_indexes in enumerate(batch_indexes):
-                row_result = []
-                for index in row_indexes:
-                    if not nan_mask[batch_num, i, index]:
-                        row_result.append((index, softmax_arr[batch_num, i, index]))
-                row_result.sort(key=lambda x: x[1], reverse=True)
-                batch_result.append(row_result)
-            result.append(batch_result)
-            
-    print(result)
+    result_probs = np.take_along_axis(softmax_arr, top_indexes, axis=-1)[..., ::-1]
+    result_indices = top_indexes[..., ::-1]
+
+    result = np.stack([result_indices, result_probs], axis=-1)
+    result = np.swapaxes(result,0,1)
+    # print(result, result.shape)
+
     return result

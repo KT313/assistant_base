@@ -31,3 +31,4 @@ import io
 import numpy as np
 from tqdm import tqdm
 from scipy.special import softmax
+import copy

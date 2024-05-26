@@ -130,14 +130,16 @@ class Sync():
     def get_best_path(self):
 
         args = self.dhold.gen_inputs
-        considered_tokens_probs = self.dhold.considered_tokens_probs
-        considered_tokens_indices = self.dhold.considered_tokens_indices
-        stop_token = self.mhold.stop_token
+        # self.dhold.considered_tokens_num
+        # considered_tokens_indices = self.dhold.logits
+        # stop_token = self.mhold.stop_token
         
         total_probs  = []
         prediction_paths_probs = []
         prediction_paths_indices = []
         skip_path = []
+
+        logits_merker = copy.deepcopy(self.dhold.logits)
 
         tokens = None
         try:
@@ -145,11 +147,20 @@ class Sync():
         except:
             tokens = args['tokens']
 
-        batched_input_tokens = torch.concatenate((tokens.repeat(len(considered_tokens_indices), 1), torch.tensor(considered_tokens_indices, device=self.config['torch_device']).unsqueeze(1)), dim=-1)
+        # print(self.dhold.considered_tokens_num)
+        # print(self.dhold.logits)
+
+        # print(tokens.repeat(self.dhold.considered_tokens_num[0], 1), tokens.repeat(self.dhold.considered_tokens_num[0], 1).shape)
+        # print(torch.tensor(self.dhold.logits[0, 0, :, 0], device=self.config['torch_device']).unsqueeze(1), torch.tensor(self.dhold.logits[0, 0, :self.dhold.considered_tokens_num[0], 0], device=self.config['torch_device']).unsqueeze(1).shape)
+
+        batched_input_tokens = torch.concatenate((tokens.repeat(self.dhold.considered_tokens_num[0], 1), torch.tensor(self.dhold.logits[0, 0, :self.dhold.considered_tokens_num[0], 0], device=self.config['torch_device']).unsqueeze(1)), dim=-1).to(torch.long)
         batched_input_masks = torch.ones_like(batched_input_tokens, device=self.config['torch_device'])
 
-        self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+        # print(batched_input_tokens, batched_input_tokens.shape)
+        # print(batched_input_masks, batched_input_masks.shape)
 
+        self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+        
         a = """
         beam_output = self.mhold.model.generate(
             batched_input_tokens,
@@ -164,28 +175,29 @@ class Sync():
             return_dict_in_generate=True,
             pad_token_id = stop_token
         )"""
+        print("all beams logits shape:", self.dhold.logits.shape)
 
-        for i in range(len(considered_tokens_probs)):
+        for i in range(self.dhold.considered_tokens_num[0]):
             # case considered token is stop token:
-            if considered_tokens_indices[i] == stop_token:
-                total_probs.append(math.log(considered_tokens_probs[i]))
-                prediction_paths_probs.append([math.log(considered_tokens_probs[i])])
-                prediction_paths_indices.append([considered_tokens_indices[i]])
+            if logits_merker[0, 0, i, 0] == self.mhold.stop_token:
+                total_probs.append(math.log(logits_merker[0, 0, i, 1]))
+                prediction_paths_probs.append([math.log(self.dhold.logits[0, 0, i, 1])])
+                prediction_paths_indices.append([self.dhold.logits[0, 0, i, 0]])
                 skip_path.append(i)
                 continue
                 
             highest_path_probs = []
             highest_path_indices = []
-            for token_num in range(len(self.dhold.logits)):
+            for token_num in range(self.dhold.logits.shape[1]):
                 # beam_probabilities, beam_indices = torch.topk(torch.softmax(self.dhold.logits[token_num][i], dim=-1), k=args['max_num_beams'])
-                # highest_path_probs.append(math.log(beam_probabilities.tolist()[0]))
-                # highest_path_indices.append(beam_indices.tolist()[0])
+                highest_path_probs.append(math.log(self.dhold.logits[i, token_num, 0, 1]))
+                highest_path_indices.append(self.dhold.logits[i, token_num, 0, 0])
                 pass
-            total_prob = math.log(considered_tokens_probs[i])
+            total_prob = math.log(logits_merker[0, 0, i, 1])
             total_prob += sum(highest_path_probs)
             total_probs.append(total_prob)
-            prediction_paths_probs.append([math.log(considered_tokens_probs[i])]+highest_path_probs)
-            prediction_paths_indices.append([considered_tokens_indices[i]]+highest_path_indices)
+            prediction_paths_probs.append([math.log(logits_merker[0, 0, i, 1])]+highest_path_probs)
+            prediction_paths_indices.append([logits_merker[0, 0, i, 0]]+highest_path_indices)
 
         if args['debugmode']:
             print("paths total probs:", [round(entry, 3) for entry in total_probs])
@@ -194,6 +206,12 @@ class Sync():
 
         self.dhold.best_beam_probs = prediction_paths_probs[best_beam]
         self.dhold.best_beam_indices = prediction_paths_indices[best_beam]
+
+        # print(prediction_paths_probs)
+        # print(prediction_paths_indices)
+        # print(self.dhold.best_beam_probs)
+        # print(self.dhold.best_beam_indices)
+        # exit()
 
         
 
@@ -301,36 +319,20 @@ class Sync():
         self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
         self.dhold.logits = get_logits(gen_output)
 
-        self.dhold.considered_tokens_probs = []
-        self.dhold.considered_tokens_indices = []
+        # print(self.dhold.logits)
 
-        if not isinstance(self.dhold.logits[0][0], list):
-            self.dhold.logits_probs = [[x[1] for x in token_logits] for token_logits in self.dhold.logits]
-            self.dhold.logits_indices = [[x[0] for x in token_logits] for token_logits in self.dhold.logits]
-            for i in range(args['max_num_beams']):
-                if self.dhold.logits_probs[0][i] >= args['min_conf_for_consider']:
-                    if self.dhold.generated_tokens == 0 and self.dhold.logits_indices[0][i] == self.mhold.stop_token:
-                        continue
-                    self.dhold.considered_tokens_probs.append(self.dhold.logits_probs[0][i])
-                    self.dhold.considered_tokens_indices.append(self.dhold.logits_indices[0][i])
-                if sum(self.dhold.considered_tokens_probs) >= args['prob_sum_for_search']:
+        # get number of considered tokens for each batch
+        merker = [1 for _ in range(self.dhold.logits.shape[0])] #  add the first one by default
+        for batch_num in range(self.dhold.logits.shape[0]):
+            for top_logit_num in range(1, self.dhold.logits.shape[2]):
+                if self.dhold.logits[batch_num][0][top_logit_num][1] >= args['min_conf_for_consider']:
+                    merker[batch_num] += 1
+                else: 
                     break
-        else:
-            self.dhold.logits_probs = [[[x[1] for x in token_logits] for token_logits in batch_logits] for batch_logits in self.dhold.logits]
-            self.dhold.logits_indices = [[[x[0] for x in token_logits] for token_logits in batch_logits] for batch_logits in self.dhold.logits]
-            for i in range(len(self.dhold.logits_probs[0])):
-                for j in range(len(self.dhold.logits_probs[0][i])):
-                    self.dhold.considered_tokens_probs.append([])
-                    self.dhold.considered_tokens_indices.append([])
-                    if self.dhold.logits_probs[0][i][j] >= args['min_conf_for_consider']:
-                        if self.dhold.generated_tokens == 0 and self.dhold.logits_indices[0][i] == self.mhold.stop_token:
-                            continue
-                        self.dhold.considered_tokens_probs[i].append(self.dhold.logits_probs[0][i][j])
-                        self.dhold.considered_tokens_indices[i].append(self.dhold.logits_indices[0][i][j])
-                    if sum(self.dhold.considered_tokens_probs[i]) >= args['prob_sum_for_search']:
-                        break
+                if np.sum(self.dhold.logits[batch_num][0][:merker[batch_num]][0]) >= args['prob_sum_for_search']:
+                    break
+        self.dhold.considered_tokens_num = np.array(merker)
 
-        
 
         
         
@@ -353,15 +355,19 @@ class Sync():
             while self.dhold.generated_tokens < args['max_new_tokens']:
                 # generate limit 1 token
                 self.do_inference(limit_tokens=1)
+                print("a")
                 # use logits to get best path
         
-                if len(self.dhold.considered_tokens_indices) == 1:
+                if self.dhold.considered_tokens_num[0] == 1:
+                    print("b")
                     self.dhold.tokens_to_add = [self.dhold.considered_tokens_indices[0]]
                     self.dhold.best_path_indices = self.dhold.tokens_to_add
                     self.dhold.additional_sure_tokens = 0
                     
                 else:
+                    print("c")
                     self.get_best_path()
+                    print("d")
         
                     self.dhold.tokens_to_add = [self.dhold.best_beam_indices[0]] # at least at the init token for the best path
                     self.dhold.additional_sure_tokens = 0
