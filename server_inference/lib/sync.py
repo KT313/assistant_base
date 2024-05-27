@@ -101,11 +101,16 @@ class Sync():
             self.dhold.gen_inputs['tokens'] = tokens
             self.dhold.gen_inputs['image_tensor'] = image_tensor
             self.dhold.gen_inputs['image_sizes'] = image_sizes
-            self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
+            if image_tensor != None:
+                self.dhold.input_shape = [self.dhold.gen_inputs['tokens'].shape, self.dhold.gen_inputs['image_tensor'].shape]
+            else:
+                self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
+            self.dhold.original_input_len = self.dhold.gen_inputs['tokens'].shape[-1]
 
         if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
 
             self.dhold.gen_inputs['text'] = prompt_string
+            self.dhold.original_input_len = 0
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
 
@@ -114,6 +119,7 @@ class Sync():
             self.dhold.gen_inputs['tokens'] = tokens
             self.dhold.gen_inputs['beam_config'] = args['beam_config']
             self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
+            self.dhold.original_input_len = self.dhold.gen_inputs['tokens'].shape[-1]
 
         if args['model'] == "phi-3-vision-128k-instruct":
             image_input = None
@@ -124,6 +130,7 @@ class Sync():
 
             self.dhold.gen_inputs['tokens'] = tokens
             self.dhold.input_shape = self.dhold.gen_inputs['tokens'].input_ids.shape
+            self.dhold.original_input_len = self.dhold.gen_inputs['tokens'].input_ids.shape[-1]
 
         self.dhold.gen_inputs['model'] = args['model']
 
@@ -139,7 +146,8 @@ class Sync():
         prediction_paths_indices = []
         skip_path = []
 
-        logits_merker = copy.deepcopy(self.dhold.logits)
+        self.dhold.logits_merker = copy.deepcopy(self.dhold.logits)
+        self.dhold.considered_tokens_num_merker = copy.deepcopy(self.dhold.considered_tokens_num)
 
         tokens = None
         try:
@@ -179,8 +187,8 @@ class Sync():
 
         for i in range(self.dhold.considered_tokens_num[0]):
             # case considered token is stop token:
-            if logits_merker[0, 0, i, 0] == self.mhold.stop_token:
-                total_probs.append(math.log(logits_merker[0, 0, i, 1]))
+            if self.dhold.logits_merker[0, 0, i, 0] == self.mhold.stop_token:
+                total_probs.append(math.log(self.dhold.logits_merker[0, 0, i, 1]))
                 prediction_paths_probs.append([math.log(self.dhold.logits[0, 0, i, 1])])
                 prediction_paths_indices.append([self.dhold.logits[0, 0, i, 0]])
                 skip_path.append(i)
@@ -193,11 +201,11 @@ class Sync():
                 highest_path_probs.append(math.log(self.dhold.logits[i, token_num, 0, 1]))
                 highest_path_indices.append(self.dhold.logits[i, token_num, 0, 0])
                 pass
-            total_prob = math.log(logits_merker[0, 0, i, 1])
+            total_prob = math.log(self.dhold.logits_merker[0, 0, i, 1])
             total_prob += sum(highest_path_probs)
             total_probs.append(total_prob)
-            prediction_paths_probs.append([math.log(logits_merker[0, 0, i, 1])]+highest_path_probs)
-            prediction_paths_indices.append([logits_merker[0, 0, i, 0]]+highest_path_indices)
+            prediction_paths_probs.append([math.log(self.dhold.logits_merker[0, 0, i, 1])]+highest_path_probs)
+            prediction_paths_indices.append([self.dhold.logits_merker[0, 0, i, 0]]+highest_path_indices)
 
         if args['debugmode']:
             print("paths total probs:", [round(entry, 3) for entry in total_probs])
@@ -221,14 +229,16 @@ class Sync():
             return None
         args = self.dhold.gen_inputs
         if limit_tokens != None:
-            args['max_new_tokens'] = limit_tokens
+            max_tokens_this_gen = limit_tokens
+        else:
+            max_tokens_this_gen = args['max_new_tokens']
 
         generated_tokens = 0
 
         self.mhold.stop_token = None
 
         gen_kwargs = {
-            'max_new_tokens': args['max_new_tokens'],
+            'max_new_tokens': max_tokens_this_gen,
             'do_sample': False,
             'temperature': 1,
             'output_scores': True,
@@ -271,13 +281,14 @@ class Sync():
 
         if args['model'] == "phi-3-vision-128k-instruct":
             gen_kwargs.update({
-                'attention_mask': args['tokens'].attention_mask,
+                'attention_mask': torch.ones_like(args['tokens'].input_ids, device=self.config['torch_device']),
                 'pixel_values': args['tokens'].pixel_values if "pixel_values" in args['tokens'] else None,
                 'image_sizes': args['tokens'].image_sizes if "image_sizes" in args['tokens'] else None,
                 'eos_token_id': self.mhold.processor.tokenizer.eos_token_id
             })
             self.mhold.stop_token = self.mhold.processor.tokenizer.eos_token_id
             gen_input = args['tokens'].input_ids
+            print("gen_input:\n", gen_input)
             output_processor = lambda output: [self.mhold.processor.decode(output.sequences[i][args['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
             shape_attr = lambda output: output.sequences[:, args['tokens']['input_ids'].shape[1]:].shape
             
@@ -287,7 +298,7 @@ class Sync():
             del gen_kwargs['output_scores']
             del gen_kwargs['return_dict_in_generate']
             gen_kwargs.update({
-                'max_tokens': args['max_new_tokens'],
+                'max_tokens': max_tokens_this_gen,
                 'stop': ["<|eot_id|>"],
                 'echo': False,
                 'top_k': 1,
@@ -323,6 +334,7 @@ class Sync():
 
         # get number of considered tokens for each batch
         merker = [1 for _ in range(self.dhold.logits.shape[0])] #  add the first one by default
+        print(self.dhold.logits, self.dhold.logits.shape)
         for batch_num in range(self.dhold.logits.shape[0]):
             for top_logit_num in range(1, self.dhold.logits.shape[2]):
                 if self.dhold.logits[batch_num][0][top_logit_num][1] >= args['min_conf_for_consider']:
@@ -360,9 +372,12 @@ class Sync():
         
                 if self.dhold.considered_tokens_num[0] == 1:
                     print("b")
-                    self.dhold.tokens_to_add = [self.dhold.considered_tokens_indices[0]]
+                    self.dhold.tokens_to_add = [self.dhold.logits[0, 0, 0, 0]]
                     self.dhold.best_path_indices = self.dhold.tokens_to_add
                     self.dhold.additional_sure_tokens = 0
+                    self.dhold.logits_merker = copy.deepcopy(self.dhold.logits)
+                    self.dhold.considered_tokens_num_merker = copy.deepcopy(self.dhold.considered_tokens_num)
+                    self.dhold.best_beam_indices = [self.dhold.logits[0, 0, 0, 0]]
                     
                 else:
                     print("c")
@@ -383,32 +398,50 @@ class Sync():
         
         
         
-        
-                args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).unsqueeze(0)), dim=-1)
-                attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+                try:
+                    args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
+                    attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+                except:
+                    args['tokens'].input_ids = torch.concatenate((args['tokens'].input_ids, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
+                    attn_mask = torch.ones_like(args['tokens'].input_ids, device=self.config['torch_device'])
+                except:
+                    args['text'] = += TODO
         
                 if args['debugmode']:
-                    print(" | ".join([str(round(entry, 5)).ljust(14) for entry in self.dhold.logits_probs[0]]))
-                    print(" | ".join([self.mhold.tokenizer.decode(entry, skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_indices[0]]))
-                    if len(self.dhold.considered_tokens_indices) == 1:
+                    print(" | ".join([str(round(entry, 5)).ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 1]]))
+                    try:
+                        print(" | ".join([self.mhold.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
+                    except:
+                        print(" | ".join([self.mhold.processor.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
+                    # print(self.dhold.considered_tokens_num_merker)
+                    if self.dhold.considered_tokens_num_merker == 1:
                         print("-> single considered token, not doing beam search")
                     else:
-                        print(f"-> using {len(self.dhold.considered_tokens_indices)} beams")
+                        print(f"-> using {self.dhold.considered_tokens_num_merker} beams")
         
                     print("\n")
-                    print(f"current generation: {self.mhold.tokenizer.decode(args['tokens'][0][original_input_len:-len(tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.tokenizer.decode(tokens_to_add, skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.tokenizer.decode(best_path_indices[1+additional_sure_tokens:], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                    try:
+                        print(f"current generation: {self.mhold.tokenizer.decode(args['tokens'][0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                    except:
+                        print(f"current generation: {self.mhold.processor.tokenizer.decode(args['tokens'].input_ids[0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
                     print("\n\n\n")
         
-                if 128003 in tokens_to_add:
+                if self.mhold.stop_token in self.dhold.tokens_to_add:
                     if args['debugmode']:
                         print("tokens to add contained stop token, stopping.")
                     break
                 
-                if generated_tokens >= args['max_new_tokens']:
+                if self.dhold.generated_tokens >= args['max_new_tokens']:
                     reached_token_limit = True
                     if args['debugmode']:
                         print("reached max_new_tokens, stopping.")
                     break
+
+            # end
+            try:
+                self.dhold.returned_content = [self.mhold.tokenizer.decode(args['tokens'].tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
+            except:
+                self.dhold.returned_content = [self.mhold.processor.tokenizer.decode(args['tokens'].input_ids.tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
 
 
 

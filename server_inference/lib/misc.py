@@ -37,9 +37,20 @@ class ClearCache:
         torch.cuda.empty_cache()
 
 def get_generation_stats(dhold):
-    dhold.num_input_tokens = 1
-    for dim_size in dhold.input_shape:
-        dhold.num_input_tokens *= dim_size
+    # in case visual tokens have a separate tensor
+    if isinstance(dhold.input_shape, list):
+        dhold.num_input_tokens = 0
+        for sublist in dhold.input_shape:
+            to_add = 1
+            for dim_size in sublist:
+                to_add *= dim_size
+            dhold.num_input_tokens += to_add
+    else:
+        dhold.num_input_tokens = 0
+        to_add = 1
+        for dim_size in dhold.input_shape:
+            to_add *= dim_size
+        dhold.num_input_tokens += to_add
     dhold.num_output_tokens = 1
     for dim_size in dhold.output_shape:
         dhold.num_output_tokens *= dim_size
@@ -111,6 +122,8 @@ def base64_to_pil(base64_images):
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
 def find_top_indexes(arr, n_top):
     arr = np.array(arr)
+    if len(arr.shape) == 2:
+        arr = np.expand_dims(arr, axis=0)
 
     arr = np.array(arr)
     nan_mask = np.isnan(arr)
