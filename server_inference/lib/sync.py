@@ -102,14 +102,16 @@ class Sync():
             self.dhold.gen_inputs['image_tensor'] = image_tensor
             self.dhold.gen_inputs['image_sizes'] = image_sizes
             if image_tensor != None:
-                self.dhold.input_shape = [self.dhold.gen_inputs['tokens'].shape, self.dhold.gen_inputs['image_tensor'].shape]
+                self.dhold.input_shape = [self.dhold.gen_inputs['tokens'].shape, self.dhold.gen_inputs['image_tensor'][0].shape]
             else:
                 self.dhold.input_shape = self.dhold.gen_inputs['tokens'].shape
             self.dhold.original_input_len = self.dhold.gen_inputs['tokens'].shape[-1]
 
         if args['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or args['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
 
-            self.dhold.gen_inputs['text'] = prompt_string
+            # self.dhold.gen_inputs['text'] = prompt_string
+            self.dhold.gen_inputs['tokens'] = self.mhold.model.tokenize(prompt_string.encode('UTF-8'))
+            self.dhold.input_shape = [1, len(self.dhold.gen_inputs['tokens'])]
             self.dhold.original_input_len = 0
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
@@ -160,14 +162,20 @@ class Sync():
 
         # print(tokens.repeat(self.dhold.considered_tokens_num[0], 1), tokens.repeat(self.dhold.considered_tokens_num[0], 1).shape)
         # print(torch.tensor(self.dhold.logits[0, 0, :, 0], device=self.config['torch_device']).unsqueeze(1), torch.tensor(self.dhold.logits[0, 0, :self.dhold.considered_tokens_num[0], 0], device=self.config['torch_device']).unsqueeze(1).shape)
-
+        was_list = False
+        if isinstance(tokens, list):
+            was_list = True
+            tokens = torch.tensor(tokens, device=self.config['torch_device'])
+            
         batched_input_tokens = torch.concatenate((tokens.repeat(self.dhold.considered_tokens_num[0], 1), torch.tensor(self.dhold.logits[0, 0, :self.dhold.considered_tokens_num[0], 0], device=self.config['torch_device']).unsqueeze(1)), dim=-1).to(torch.long)
         batched_input_masks = torch.ones_like(batched_input_tokens, device=self.config['torch_device'])
 
         # print(batched_input_tokens, batched_input_tokens.shape)
         # print(batched_input_masks, batched_input_masks.shape)
-
-        self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+        if not was_list:
+            self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+        else:
+            self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens.tolist(), llama_sequencial_batch=True)
         
         a = """
         beam_output = self.mhold.model.generate(
@@ -187,7 +195,8 @@ class Sync():
 
         for i in range(self.dhold.considered_tokens_num[0]):
             # case considered token is stop token:
-            if self.dhold.logits_merker[0, 0, i, 0] == self.mhold.stop_token:
+            # print(self.dhold.logits_merker[0, 0, i, 0], self.mhold.stop_token)
+            if np.any(self.dhold.logits_merker[0, 0, i, 0] == self.mhold.stop_token):
                 total_probs.append(math.log(self.dhold.logits_merker[0, 0, i, 1]))
                 prediction_paths_probs.append([math.log(self.dhold.logits[0, 0, i, 1])])
                 prediction_paths_indices.append([self.dhold.logits[0, 0, i, 0]])
@@ -223,7 +232,7 @@ class Sync():
 
         
 
-    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None):
+    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, llama_sequencial_batch=False):
         self.dhold.start_time_inference = time.time()
         if self.dhold.error:
             return None
@@ -268,7 +277,6 @@ class Sync():
             gen_kwargs.update({
                 'images': args['image_tensor'],
                 'image_sizes': args['image_sizes'],
-                
             })
             output_processor = lambda output: [self.mhold.tokenizer.decode(output.sequences[i][:], skip_special_tokens=True) for i in range(len(output.sequences))]
             shape_attr = lambda output: output.sequences[0][:].shape
@@ -304,10 +312,10 @@ class Sync():
                 'top_k': 1,
                 'logprobs': -1,
             })
-            self.mhold.stop_token = self.mhold.model.tokenize("<|eot_id|>".encode('UTF-8'))
+            self.mhold.stop_token = self.mhold.model.tokenize("<|eot_id|>".encode('UTF-8'), special=True)
             got_input_shape_already = False
             gen_function = self.mhold.model
-            gen_input = args['text']
+            gen_input = args['tokens']
             output_processor = lambda output: [out['text'] for out in output['choices']]
             shape_attr = lambda output: [1, output['usage']['completion_tokens']]
             input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
@@ -324,11 +332,27 @@ class Sync():
                 'attention_mask': alternative_mask,
             })
 
-        gen_output = gen_function(gen_input, **gen_kwargs)
+        print(gen_input)
+        if not llama_sequencial_batch:
+            print(gen_input)
+            gen_output = gen_function(gen_input, **gen_kwargs)
 
-        self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
-        self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)            
-        self.dhold.logits = get_logits(gen_output)
+            self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
+            self.dhold.output_shape = getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output)
+            self.dhold.logits = get_logits(gen_output)
+        else:
+            returned_content = []
+            output_shape = []
+            logits = []
+            for entry in gen_input:
+                gen_output = gen_function(entry, **gen_kwargs)
+    
+                returned_content.append([entry.strip() for entry in output_processor(gen_output)])
+                output_shape.append(getattr(gen_output, shape_attr) if isinstance(shape_attr, str) else shape_attr(gen_output))
+                logits.append(get_logits(gen_output))
+            self.dhold.returned_content = returned_content
+            self.dhold.output_shape = np.array(output_shape)
+            self.dhold.logits = np.concatenate(logits, axis=0)
 
         # print(self.dhold.logits)
 
@@ -348,7 +372,6 @@ class Sync():
 
         
         
-        if not got_input_shape_already: self.dhold.input_shape = input_shape_attr(gen_output)
         if args['debugmode']: print("\n\nself.dhold.returned_content:", self.dhold.returned_content, "\n\n")
 
 
@@ -395,38 +418,52 @@ class Sync():
                         
                 self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
         
-        
-        
+
+                try:
+                    tokens = args['tokens'].input_ids
+                except:
+                    tokens = args['tokens']
+                    
+                was_list = False
+                if isinstance(tokens, list):
+                    was_list = True
+                    tokens = torch.tensor(tokens, device=self.config['torch_device']).unsqueeze(0)
         
                 try:
-                    args['tokens'] = torch.concatenate((args['tokens'], torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
-                    attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
+                    args['tokens'] = torch.concatenate((tokens, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
+                    attn_mask = torch.ones_like(tokens, device=self.config['torch_device'])
+                    if was_list:
+                        args['tokens'] = args['tokens'].tolist()[0]
                 except:
-                    args['tokens'].input_ids = torch.concatenate((args['tokens'].input_ids, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
-                    attn_mask = torch.ones_like(args['tokens'].input_ids, device=self.config['torch_device'])
-                except:
-                    args['text'] = += TODO
+                    args['tokens'].input_ids = torch.concatenate((tokens, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
+                    attn_mask = torch.ones_like(tokens, device=self.config['torch_device'])
         
                 if args['debugmode']:
                     print(" | ".join([str(round(entry, 5)).ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 1]]))
-                    try:
-                        print(" | ".join([self.mhold.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
-                    except:
-                        print(" | ".join([self.mhold.processor.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
+                    if was_list:
+                        print(" | ".join([self.mhold.model.detokenize([int(entry)]).decode('UTF-8').strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
+                    else:
+                        try:
+                            print(" | ".join([self.mhold.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
+                        except:
+                            print(" | ".join([self.mhold.processor.tokenizer.decode([int(entry)], skip_special_tokens=False, clean_up_tokenization_space=True).strip().ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 0]]))
                     # print(self.dhold.considered_tokens_num_merker)
-                    if self.dhold.considered_tokens_num_merker == 1:
+                    if np.any(self.dhold.considered_tokens_num_merker == 1):
                         print("-> single considered token, not doing beam search")
                     else:
                         print(f"-> using {self.dhold.considered_tokens_num_merker} beams")
         
                     print("\n")
-                    try:
-                        print(f"current generation: {self.mhold.tokenizer.decode(args['tokens'][0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
-                    except:
-                        print(f"current generation: {self.mhold.processor.tokenizer.decode(args['tokens'].input_ids[0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                    if was_list:
+                        print(f"current generation: {self.mhold.model.detokenize(args['tokens'][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)]).decode('UTF-8')}\x1b[32m{self.mhold.model.detokenize([int(a) for a in self.dhold.tokens_to_add]).decode('UTF-8')}\x1b[0m \x1b[37m{self.mhold.model.detokenize([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]]).decode('UTF-8')}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                    else:
+                        try:
+                            print(f"current generation: {self.mhold.tokenizer.decode(args['tokens'][0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                        except:
+                            print(f"current generation: {self.mhold.processor.tokenizer.decode(args['tokens'].input_ids[0][self.dhold.original_input_len:-len(self.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{self.mhold.processor.tokenizer.decode([int(a) for a in self.dhold.best_beam_indices[1+self.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m") # \[90m or \[37m for gray \x1b[43
                     print("\n\n\n")
         
-                if self.mhold.stop_token in self.dhold.tokens_to_add:
+                if np.any(self.dhold.tokens_to_add == self.mhold.stop_token):
                     if args['debugmode']:
                         print("tokens to add contained stop token, stopping.")
                     break
@@ -438,10 +475,13 @@ class Sync():
                     break
 
             # end
-            try:
-                self.dhold.returned_content = [self.mhold.tokenizer.decode(args['tokens'].tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
-            except:
-                self.dhold.returned_content = [self.mhold.processor.tokenizer.decode(args['tokens'].input_ids.tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
+            if was_list:
+                self.dhold.returned_content = [self.mhold.model.detokenize(args['tokens'][self.dhold.original_input_len:]).decode('UTF-8')]
+            else:
+                try:
+                    self.dhold.returned_content = [self.mhold.tokenizer.decode(args['tokens'].tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
+                except:
+                    self.dhold.returned_content = [self.mhold.processor.tokenizer.decode(args['tokens'].input_ids.tolist()[0][self.dhold.original_input_len:], skip_special_tokens=True)]
 
 
 

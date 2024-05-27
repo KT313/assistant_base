@@ -37,8 +37,9 @@ class ClearCache:
         torch.cuda.empty_cache()
 
 def get_generation_stats(dhold):
+    print(dhold.input_shape)
     # in case visual tokens have a separate tensor
-    if isinstance(dhold.input_shape, list):
+    if isinstance(dhold.input_shape, list) and not isinstance(dhold.input_shape[0], int):
         dhold.num_input_tokens = 0
         for sublist in dhold.input_shape:
             to_add = 1
@@ -55,7 +56,7 @@ def get_generation_stats(dhold):
     for dim_size in dhold.output_shape:
         dhold.num_output_tokens *= dim_size
     dhold.total_time_taken = round(time.time() - dhold.start_time_total, 2)
-    dhold.tokens_per_second = round(dhold.num_output_tokens/(time.time() - dhold.start_time_inference), 2)
+    dhold.tokens_per_second = np.round(dhold.num_output_tokens/(time.time() - dhold.start_time_inference), 2)
 
     dhold.available_mem, dhold.total_mem = torch.cuda.mem_get_info()
 
@@ -74,7 +75,8 @@ def make_output_dict_str(sync, show_info=False):
 
     get_generation_stats(dhold)
     
-    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': dhold.returned_content, 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}})
+    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': dhold.returned_content, 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
+    print(dhold.output_dict)
 
 def prep_for_new_gen(sync, request_json, show_info=False):
     sync.make_new_dhold()
