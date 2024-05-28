@@ -172,10 +172,13 @@ class Sync():
 
         # print(batched_input_tokens, batched_input_tokens.shape)
         # print(batched_input_masks, batched_input_masks.shape)
-        if not was_list:
-            self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
-        else:
+        if self.mhold.current_model == "llama3-llava-next-8b" and len(args['images']) > 0:
+            self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=torch.ones_like(batched_input_tokens[0].unsqueeze(0), device=self.config['torch_device']), llama_sequencial_batch=True)
+        elif was_list:
             self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens.tolist(), llama_sequencial_batch=True)
+        else:
+            self.do_inference(limit_tokens=args['depth_beams'], alternative_input=batched_input_tokens, alternative_mask=batched_input_masks)
+        
         
         a = """
         beam_output = self.mhold.model.generate(
@@ -267,7 +270,7 @@ class Sync():
             attn_mask = torch.ones_like(args['tokens'], device=self.config['torch_device'])
             gen_kwargs.update({
                 'num_beams': 1,
-                'attention_mask': attn_mask,
+                'attention_mask': torch.ones_like(args['tokens'], device=self.config['torch_device']),
                 'pad_token_id': self.mhold.tokenizer.eos_token_id,
             })
             gen_input = args['tokens']
@@ -334,7 +337,8 @@ class Sync():
 
         print(gen_input)
         if not llama_sequencial_batch:
-            print(gen_input)
+            print("gen_input:\n", gen_input)
+            print("gen_kwargs:\n", gen_kwargs)
             gen_output = gen_function(gen_input, **gen_kwargs)
 
             self.dhold.returned_content = [entry.strip() for entry in output_processor(gen_output)]
@@ -345,6 +349,12 @@ class Sync():
             output_shape = []
             logits = []
             for entry in gen_input:
+                if isinstance(entry, torch.Tensor) and len(entry.shape) == 1:
+                    entry = entry.unsqueeze(0)
+                print("entry:\n", entry)
+                print("gen_kwargs:\n", gen_kwargs)
+                print(type(entry))
+                
                 gen_output = gen_function(entry, **gen_kwargs)
     
                 returned_content.append([entry.strip() for entry in output_processor(gen_output)])
