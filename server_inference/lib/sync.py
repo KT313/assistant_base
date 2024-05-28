@@ -112,7 +112,7 @@ class Sync():
             # self.dhold.gen_inputs['text'] = prompt_string
             self.dhold.gen_inputs['tokens'] = self.mhold.model.tokenize(prompt_string.encode('UTF-8'))
             self.dhold.input_shape = [1, len(self.dhold.gen_inputs['tokens'])]
-            self.dhold.original_input_len = 0
+            self.dhold.original_input_len = len(self.dhold.gen_inputs['tokens'])
 
         if args['model'] == "Hermes-2-Theta-Llama-3-8B":
 
@@ -418,9 +418,10 @@ class Sync():
                         
                 self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
         
-
+                was_input_ids = False
                 try:
                     tokens = args['tokens'].input_ids
+                    was_input_ids = True
                 except:
                     tokens = args['tokens']
                     
@@ -428,15 +429,17 @@ class Sync():
                 if isinstance(tokens, list):
                     was_list = True
                     tokens = torch.tensor(tokens, device=self.config['torch_device']).unsqueeze(0)
-        
-                try:
+
+                if was_input_ids:
+                    args['tokens'].input_ids = torch.concatenate((tokens, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
+                    attn_mask = torch.ones_like(tokens, device=self.config['torch_device'])
+                    
+                else:
                     args['tokens'] = torch.concatenate((tokens, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
                     attn_mask = torch.ones_like(tokens, device=self.config['torch_device'])
                     if was_list:
                         args['tokens'] = args['tokens'].tolist()[0]
-                except:
-                    args['tokens'].input_ids = torch.concatenate((tokens, torch.tensor(self.dhold.tokens_to_add, device=self.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
-                    attn_mask = torch.ones_like(tokens, device=self.config['torch_device'])
+                
         
                 if args['debugmode']:
                     print(" | ".join([str(round(entry, 5)).ljust(14) for entry in self.dhold.logits_merker[0, 0, :, 1]]))
