@@ -37,7 +37,6 @@ class ClearCache:
         torch.cuda.empty_cache()
 
 def get_generation_stats(dhold):
-    print(dhold.input_shape)
     # in case visual tokens have a separate tensor
     if isinstance(dhold.input_shape, list) and not isinstance(dhold.input_shape[0], int):
         dhold.num_input_tokens = 0
@@ -76,7 +75,6 @@ def make_output_dict_str(sync, show_info=False):
     get_generation_stats(dhold)
     
     dhold.output_dict = json.dumps({'status': 'success', 'returned_content': dhold.returned_content, 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
-    print(dhold.output_dict)
 
 def prep_for_new_gen(sync, request_json, show_info=False):
     sync.make_new_dhold()
@@ -106,16 +104,9 @@ def prep_for_new_gen(sync, request_json, show_info=False):
 def base64_to_pil(base64_images):
     pil_images = []
     for base64_image in base64_images:
-        # Decode the Base64 string
         decoded_data = base64.b64decode(base64_image.split(',')[1])
-        
-        # Create a file-like object from the decoded data
         image_data = io.BytesIO(decoded_data)
-        
-        # Open the file-like object as a PIL image
         pil_image = Image.open(image_data)
-        
-        # Append the PIL image to the list
         pil_images.append(pil_image)
 
     return pil_images
@@ -139,6 +130,5 @@ def find_top_indexes(arr, n_top):
 
     result = np.stack([result_indices, result_probs], axis=-1)
     result = np.swapaxes(result,0,1)
-    # print(result, result.shape)
 
     return result
