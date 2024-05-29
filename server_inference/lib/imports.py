@@ -1,34 +1,35 @@
-import os
-import json
-
 import warnings
-
-from llava.model.builder import load_pretrained_model
-from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_image_token
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
-from conversation import conv_templates, SeparatorStyle
-
-from llama_cpp import Llama
-
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration
-import bitsandbytes, flash_attn
-
-from PIL import Image
 import requests
-import torch
-import copy
+import base64
 import time
 import math
+import copy
+import json
+import os
+import io
 import gc
 
-import torch
-from torch.autograd import profiler
-
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration
 from flask import Flask, render_template, request, jsonify
-
-import base64
-import io
-import numpy as np
-from tqdm import tqdm
 from scipy.special import softmax
-import copy
+from llama_cpp import Llama
+from tqdm import tqdm
+from PIL import Image
+import bitsandbytes
+import numpy as np
+import flash_attn
+import torch
+
+
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN, IGNORE_INDEX
+from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_image_token
+from llava.model.builder import load_pretrained_model
+
+from conversation import conv_templates, SeparatorStyle
+
+
+
+
+
+
+

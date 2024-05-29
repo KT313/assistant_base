@@ -25,7 +25,7 @@ class ModelHolder():
             self.tokenizer = tokenizer
             self.model = model
             self.image_processor = image_processor
-            self.preprocessor_type = "tokenizer+image_processor"
+            self.backend = "transformers"
     
         if model_name == "Meta-Llama-3-70B-Instruct-IQ2_S" or model_name == "Meta-Llama-3-70B-Instruct-IQ1_M":
             pretrained = sync.config['models'][model_name]['path']
@@ -37,7 +37,7 @@ class ModelHolder():
                 flash_attn=True,
             )
             self.model = model
-            self.preprocessor_type = "llama_cpp"
+            self.backend = "llama-cpp"
     
         if model_name == "Hermes-2-Theta-Llama-3-8B":
             pretrained = sync.config['models'][model_name]['path']
@@ -55,13 +55,13 @@ class ModelHolder():
             
             self.tokenizer = tokenizer
             self.model = model
-            self.preprocessor_type = "tokenizer"
+            self.backend = "transformers"
 
         if model_name == "phi-3-vision-128k-instruct":
             pretrained = sync.config['models'][model_name]['path']
             self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
             self.processor = AutoProcessor.from_pretrained(pretrained, trust_remote_code=True) 
-            self.preprocessor_type = "processor"
+            self.backend = "transformers"
             
         self.current_model = model_name
         self.current_dtype = dtype

@@ -54,19 +54,20 @@ class ProcessorHelper():
 
         sync.dhold.prompt_string = prompt_string
         print(f"built prompt string:\n\"{sync.dhold.prompt_string}\"")
-
     def load_beam_config(self, sync):        
         sync.dhold.inputs['max_num_beams'] = int(sync.dhold.inputs['beam_config']['max_num_beams'].strip())
         sync.dhold.inputs['depth_beams'] = int(sync.dhold.inputs['beam_config']['depth_beams'].strip())
         sync.dhold.inputs['min_conf_for_sure'] = float(sync.dhold.inputs['beam_config']['min_conf_for_sure'].strip())
         sync.dhold.inputs['min_conf_for_consider'] = float(sync.dhold.inputs['beam_config']['min_conf_for_consider'].strip())
         sync.dhold.inputs['prob_sum_for_search'] = float(sync.dhold.inputs['beam_config']['prob_sum_for_search'].strip())
-
     def prepare_model_generation_args(self, sync):
+        image_tensor = None
+        img_token_index = None
+        image_sizes = None
+        image_input = None
+        
         if sync.dhold.inputs['model'] == "llama3-llava-next-8b":
-            image_tensor = None
-            img_token_index = None
-            image_sizes = None
+            
             if len(sync.dhold.inputs['images']) > 0:
                 image_tensor = process_images(sync.dhold.inputs['images'], sync.mhold.image_processor, sync.mhold.model.config)
                 image_tensor = [_image.to(dtype=torch.float16, device=sync.config['torch_device']) for _image in image_tensor]
@@ -74,45 +75,41 @@ class ProcessorHelper():
                 img_token_index = IMAGE_TOKEN_INDEX
 
                 
-            tokens = tokenizer_image_token(sync.dhold.prompt_string, sync.mhold.tokenizer, img_token_index, return_tensors="pt").unsqueeze(0).to(sync.config['torch_device'])
-            image_sizes = [image.size for image in sync.dhold.inputs['images']]
+            tokenizer_output = tokenizer_image_token(sync.dhold.prompt_string, sync.mhold.tokenizer, img_token_index, return_tensors="pt").unsqueeze(0).to(sync.config['torch_device'])
 
-            sync.dhold.gen_inputs['tokens'] = tokens
-            sync.dhold.gen_inputs['image_tensor'] = image_tensor
-            sync.dhold.gen_inputs['image_sizes'] = image_sizes
-            if image_tensor != None:
-                sync.dhold.input_shape = sync.dhold.gen_inputs['tokens'].shape #, sync.dhold.gen_inputs['image_tensor'][0].shape] TODO: find out how many tokens / embeddings one image is equal to
+            sync.dhold.inputs['tokens'] = tokenizer_output
+            sync.dhold.inputs['image_tensor'] = image_tensor
+            sync.dhold.inputs['image_sizes'] = [image.size for image in sync.dhold.inputs['images']]
+            if sync.dhold.inputs['image_tensor'] != None:
+                sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape #, sync.dhold.inputs['image_tensor'][0].shape] TODO: find out how many tokens / embeddings one image is equal to
             else:
-                sync.dhold.input_shape = sync.dhold.gen_inputs['tokens'].shape
-            sync.dhold.original_input_len = sync.dhold.gen_inputs['tokens'].shape[-1]
+                sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
 
         if sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
 
-            sync.dhold.gen_inputs['tokens'] = sync.mhold.model.tokenize(sync.dhold.prompt_string.encode('UTF-8'))
-            sync.dhold.input_shape = [1, len(sync.dhold.gen_inputs['tokens'])]
-            sync.dhold.original_input_len = len(sync.dhold.gen_inputs['tokens'])
+            sync.dhold.inputs['tokens'] = torch.tensor(sync.mhold.model.tokenize(sync.dhold.prompt_string.encode('UTF-8')), device=sync.config['torch_device'])
+            sync.dhold.input_shape = [1, len(sync.dhold.inputs['tokens'])]
 
         if sync.dhold.inputs['model'] == "Hermes-2-Theta-Llama-3-8B":
 
-            tokens = sync.mhold.tokenizer(sync.dhold.prompt_string, return_tensors="pt").input_ids.to(sync.config['torch_device'])
+            tokenizer_output = sync.mhold.tokenizer(sync.dhold.prompt_string, return_tensors="pt").input_ids.to(sync.config['torch_device'])
             
-            sync.dhold.gen_inputs['tokens'] = tokens
-            sync.dhold.gen_inputs['beam_config'] = sync.dhold.inputs['beam_config']
-            sync.dhold.input_shape = sync.dhold.gen_inputs['tokens'].shape
-            sync.dhold.original_input_len = sync.dhold.gen_inputs['tokens'].shape[-1]
+            sync.dhold.inputs['tokens'] = tokenizer_output
+            sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
 
         if sync.dhold.inputs['model'] == "phi-3-vision-128k-instruct":
-            image_input = None
+            
             if len(sync.dhold.inputs['images']) > 0:
                 image_input = sync.dhold.inputs['images']
             
-            tokens = sync.mhold.processor(sync.dhold.prompt_string, image_input, return_tensors="pt").to(sync.config['torch_device'])
+            tokenizer_output = sync.mhold.processor(sync.dhold.prompt_string, image_input, return_tensors="pt").to(sync.config['torch_device'])
 
-            sync.dhold.gen_inputs['tokens'] = tokens
-            sync.dhold.input_shape = sync.dhold.gen_inputs['tokens'].input_ids.shape
-            sync.dhold.original_input_len = sync.dhold.gen_inputs['tokens'].input_ids.shape[-1]
-
-        sync.dhold.gen_inputs['model'] = sync.dhold.inputs['model']
+            sync.dhold.inputs['tokens'] = tokenizer_output.input_ids
+            sync.dhold.inputs['pixel_values'] = tokenizer_output.pixel_values if "pixel_values" in tokens else None
+            sync.dhold.inputs['image_sizes'] = tokenizer_output.image_sizes if "image_sizes" in tokens else None
+            sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
+        
+        sync.dhold.original_input_len = sync.dhold.inputs['tokens'].shape[-1]
 
     def append_tokens_to_add_to_tokens(self, sync):
         was_input_ids = False
@@ -123,18 +120,17 @@ class ProcessorHelper():
             tokens = sync.dhold.inputs['tokens']
             
         sync.dhold.was_list = False
-        if isinstance(tokens, list):
+        if sync.mhold.current_model in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
             sync.dhold.was_list = True
             tokens = torch.tensor(tokens, device=sync.config['torch_device']).unsqueeze(0)
 
-        if was_input_ids:
+        if not sync.mhold.current_model in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
             sync.dhold.inputs['tokens'].input_ids = torch.concatenate((tokens, torch.tensor(sync.dhold.tokens_to_add, device=sync.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
             
         else:
             sync.dhold.inputs['tokens'] = torch.concatenate((tokens, torch.tensor(sync.dhold.tokens_to_add, device=sync.config['torch_device']).to(torch.long).unsqueeze(0)), dim=-1)
             if sync.dhold.was_list:
                 sync.dhold.inputs['tokens'] = sync.dhold.inputs['tokens'].tolist()[0]
-
     def print_beam_debug_info(self, sync):
         if sync.dhold.inputs['debugmode']:
             print(" | ".join([str(round(entry, 5)).ljust(14) for entry in sync.dhold.logits_merker[0, 0, :, 1]]))
@@ -157,53 +153,14 @@ class ProcessorHelper():
                 try:
                     print(f"current generation: {sync.mhold.tokenizer.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{sync.mhold.tokenizer.decode([int(a) for a in sync.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{sync.mhold.tokenizer.decode([int(a) for a in sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m")
                 except:
-                    print(f"current generation: {sync.mhold.processor.tokenizer.decode(sync.dhold.inputs['tokens'].input_ids[0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{sync.mhold.processor.tokenizer.decode([int(a) for a in sync.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{sync.mhold.processor.tokenizer.decode([int(a) for a in sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m")
+                    print(f"current generation: {sync.mhold.processor.tokenizer.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[32m{sync.mhold.processor.tokenizer.decode([int(a) for a in sync.dhold.tokens_to_add], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m \x1b[37m{sync.mhold.processor.tokenizer.decode([int(a) for a in sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:]], skip_special_tokens=False, clean_up_tokenization_space=True)}\x1b[0m")
             print("\n---------------------------------------------------------------\n\n")
 
-    def beamsearch_get_returned_content(self, sync):
-        if sync.dhold.was_list:
-            sync.dhold.returned_content = [sync.mhold.model.detokenize(sync.dhold.inputs['tokens'][sync.dhold.original_input_len:]).decode('UTF-8')]
-        else:
-            try:
-                sync.dhold.returned_content = [sync.mhold.tokenizer.decode(sync.dhold.inputs['tokens'].tolist()[0][sync.dhold.original_input_len:], skip_special_tokens=True)]
-            except:
-                sync.dhold.returned_content = [sync.mhold.processor.tokenizer.decode(sync.dhold.inputs['tokens'].input_ids.tolist()[0][sync.dhold.original_input_len:], skip_special_tokens=True)]
-
-    def beamsearch_check_break_condition(self, sync):
-        sync.dhold.beamsearch_break = False
-        if np.any(sync.dhold.tokens_to_add == sync.mhold.stop_token):
-            if sync.dhold.inputs['debugmode']:
-                print("tokens to add contained stop token, stopping.")
-            sync.dhold.beamsearch_break = True
-        
-        if sync.dhold.generated_tokens >= sync.dhold.inputs['max_new_tokens']:
-            sync.dhold.beamsearch_break = True
-            if sync.dhold.inputs['debugmode']:
-                print("reached max_new_tokens, stopping.")
-
-    def beamsearch_do_search(self, sync):
-        if sync.dhold.considered_tokens_num[0] == 1:
-            sync.dhold.tokens_to_add = [sync.dhold.logits[0, 0, 0, 0]]
-            sync.dhold.best_path_indices = sync.dhold.tokens_to_add
-            sync.dhold.additional_sure_tokens = 0
-            sync.dhold.logits_merker = copy.deepcopy(sync.dhold.logits)
-            sync.dhold.considered_tokens_num_merker = copy.deepcopy(sync.dhold.considered_tokens_num)
-            sync.dhold.best_beam_indices = [sync.dhold.logits[0, 0, 0, 0]]
-            
-        else:
-            sync.get_best_path()
-
-            sync.dhold.tokens_to_add = [sync.dhold.best_beam_indices[0]] # at least at the init token for the best path
-            sync.dhold.additional_sure_tokens = 0
-            for i in range(1, len(sync.dhold.best_beam_indices)): # skip 0 since already added
-                if sync.dhold.best_beam_probs[i] >= math.log(sync.dhold.inputs['min_conf_for_sure']):
-                    sync.dhold.additional_sure_tokens += 1
-                    sync.dhold.tokens_to_add.append(sync.dhold.best_beam_indices[i])
-                else:
-                    break
+    
 
     def inference_setup_args(self, sync):        
         sync.mhold.stop_token = None
+        print("!!!", sync.dhold.max_tokens_this_gen)
         sync.dhold.gen_kwargs = {
             'max_new_tokens': sync.dhold.max_tokens_this_gen,
             'do_sample': False,
@@ -220,7 +177,6 @@ class ProcessorHelper():
             sync.dhold.get_logits = lambda output: find_top_indexes([token_logits.detach().cpu().numpy() for token_logits in output.scores], n_top=sync.dhold.inputs['max_num_beams'])
 
         if sync.dhold.inputs['model'] in ["llama3-llava-next-8b", "Hermes-2-Theta-Llama-3-8B"]:
-            sync.dhold.original_input_len = sync.dhold.inputs['tokens'].shape[-1]
             sync.dhold.attn_mask = torch.ones_like(sync.dhold.inputs['tokens'], device=sync.config['torch_device'])
             sync.dhold.gen_kwargs.update({
                 'num_beams': 1,
@@ -246,21 +202,21 @@ class ProcessorHelper():
 
         if sync.dhold.inputs['model'] == "phi-3-vision-128k-instruct":
             sync.dhold.gen_kwargs.update({
-                'attention_mask': torch.ones_like(sync.dhold.inputs['tokens'].input_ids, device=sync.config['torch_device']),
-                'pixel_values': sync.dhold.inputs['tokens'].pixel_values if "pixel_values" in sync.dhold.inputs['tokens'] else None,
-                'image_sizes': sync.dhold.inputs['tokens'].image_sizes if "image_sizes" in sync.dhold.inputs['tokens'] else None,
+                'attention_mask': torch.ones_like(sync.dhold.inputs['tokens'], device=sync.config['torch_device']),
+                'pixel_values': sync.dhold.inputs['pixel_values'],
+                'image_sizes': sync.dhold.inputs['image_sizes'],
                 'eos_token_id': sync.mhold.processor.tokenizer.eos_token_id
             })
             sync.mhold.stop_token = sync.mhold.processor.tokenizer.eos_token_id
-            sync.dhold.gen_input = sync.dhold.inputs['tokens'].input_ids
-            sync.dhold.output_processor = lambda output: [sync.mhold.processor.decode(output.sequences[i][sync.dhold.inputs['tokens']['input_ids'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
-            sync.dhold.shape_attr = lambda output: output.sequences[:, sync.dhold.inputs['tokens']['input_ids'].shape[1]:].shape
+            sync.dhold.gen_input = sync.dhold.inputs['tokens']
+            sync.dhold.output_processor = lambda output: [sync.mhold.processor.decode(output.sequences[i][sync.dhold.inputs['tokens'].shape[1]:], skip_special_tokens=True) for i in range(len(output.sequences))]
+            sync.dhold.shape_attr = lambda output: output.sequences[:, sync.dhold.inputs['tokens'].shape[1]:].shape
             
         if sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
-            del sync.dhold.gen_kwsync.dhold.inputs['max_new_tokens']
-            del sync.dhold.gen_kwsync.dhold.inputs['do_sample']
-            del sync.dhold.gen_kwsync.dhold.inputs['output_scores']
-            del sync.dhold.gen_kwsync.dhold.inputs['return_dict_in_generate']
+            del sync.dhold.gen_kwargs['max_new_tokens']
+            del sync.dhold.gen_kwargs['do_sample']
+            del sync.dhold.gen_kwargs['output_scores']
+            del sync.dhold.gen_kwargs['return_dict_in_generate']
             sync.dhold.gen_kwargs.update({
                 'max_tokens': sync.dhold.max_tokens_this_gen,
                 'stop': ["<|eot_id|>"],
@@ -271,12 +227,14 @@ class ProcessorHelper():
             sync.mhold.stop_token = sync.mhold.model.tokenize("<|eot_id|>".encode('UTF-8'), special=True)
             sync.dhold.got_input_shape_already = False
             sync.dhold.gen_function = sync.mhold.model
-            sync.dhold.gen_input = sync.dhold.inputs['tokens']
+            sync.dhold.gen_input = sync.dhold.inputs['tokens'].tolist()
             sync.dhold.output_processor = lambda output: [out['text'] for out in output['choices']]
             sync.dhold.shape_attr = lambda output: [1, output['usage']['completion_tokens']]
             sync.dhold.input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
             sync.dhold.get_logits = lambda scores: find_top_indexes(sync.mhold.model._scores[-sync.dhold.output_shape[-1]:], sync.dhold.inputs['max_num_beams'])
 
+        print("num tokens to gen 4:", sync.dhold.gen_kwargs)
+    
     def inference_check_stop_token_and_alternative_inputs(self, sync):
         if sync.mhold.stop_token == None:
             raise Error('did/could not assign stop token')
@@ -288,9 +246,10 @@ class ProcessorHelper():
             sync.dhold.gen_kwargs.update({
                 'attention_mask': sync.dhold.alternative_mask,
             })
-
     def inference_do_inference(self, sync):
+        print("num tokens to gen 3:", sync.dhold.max_tokens_this_gen)
         if not sync.dhold.llama_sequencial_batch:
+            
             sync.dhold.gen_output = sync.dhold.gen_function(sync.dhold.gen_input, **sync.dhold.gen_kwargs)
 
             sync.dhold.returned_content = [entry.strip() for entry in sync.dhold.output_processor(sync.dhold.gen_output)]
@@ -300,19 +259,25 @@ class ProcessorHelper():
             returned_content = []
             output_shape = []
             logits = []
-            for entry in sync.dhold.gen_input:
+            for index, entry in enumerate(sync.dhold.gen_input):
                 if isinstance(entry, torch.Tensor) and len(entry.shape) == 1:
                     entry = entry.unsqueeze(0)
                 
-                gen_output = sync.dhold.gen_function(sync.dhold.entry, **sync.dhold.gen_kwargs)
+                gen_output = sync.dhold.gen_function(entry, **sync.dhold.gen_kwargs)
     
                 returned_content.append([entry.strip() for entry in sync.dhold.output_processor(sync.dhold.gen_output)])
                 output_shape.append(getattr(sync.dhold.gen_output, sync.dhold.shape_attr) if isinstance(sync.dhold.shape_attr, str) else sync.dhold.shape_attr(sync.dhold.gen_output))
                 logits.append(sync.dhold.get_logits(sync.dhold.gen_output))
+                print(f"beam {index}:")
+                for key in sync.dhold.gen_output:
+                    print(key)
+                
             sync.dhold.returned_content = returned_content
             sync.dhold.output_shape = np.array(output_shape)
             sync.dhold.logits = np.concatenate(logits, axis=0)
-
+        
+        print(sync.dhold.logits.shape)
+            
     def inference_get_considered_tokens_num(self, sync):
         # get number of considered tokens for each batch
         merker = [1 for _ in range(sync.dhold.logits.shape[0])] #  add the first one by default
@@ -325,8 +290,7 @@ class ProcessorHelper():
                 if np.sum(sync.dhold.logits[batch_num][0][:merker[batch_num]][0]) >= sync.dhold.inputs['prob_sum_for_search']:
                     break
         sync.dhold.considered_tokens_num = np.array(merker)
-
-    def check_for_error_and_limit_tokens(self, sync):
+    def inference_check_for_error_and_limit_tokens(self, sync):
         if sync.dhold.error:
             return None
         if sync.dhold.limit_tokens != None:
@@ -356,15 +320,14 @@ class ProcessorHelper():
             
         sync.dhold.batched_input_tokens = torch.concatenate((tokens.repeat(sync.dhold.considered_tokens_num[0], 1), torch.tensor(sync.dhold.logits[0, 0, :sync.dhold.considered_tokens_num[0], 0], device=sync.config['torch_device']).unsqueeze(1)), dim=-1).to(torch.long)
         sync.dhold.batched_input_masks = torch.ones_like(sync.dhold.batched_input_tokens, device=sync.config['torch_device'])
-
     def beamsearch_do_inference(self, sync):
+        print("num tokens to gen 1:", sync.dhold.inputs['depth_beams'])
         if sync.mhold.current_model == "llama3-llava-next-8b" and len(sync.dhold.inputs['images']) > 0:
             sync.do_inference(limit_tokens=sync.dhold.inputs['depth_beams'], alternative_input=sync.dhold.batched_input_tokens, alternative_mask=torch.ones_like(sync.dhold.batched_input_tokens[0].unsqueeze(0), device=sync.config['torch_device']), llama_sequencial_batch=True)
-        elif sync.dhold.was_list:
+        elif sync.mhold.current_model in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
             sync.do_inference(limit_tokens=sync.dhold.inputs['depth_beams'], alternative_input=sync.dhold.batched_input_tokens.tolist(), llama_sequencial_batch=True)
         else:
             sync.do_inference(limit_tokens=sync.dhold.inputs['depth_beams'], alternative_input=sync.dhold.batched_input_tokens, alternative_mask=sync.dhold.batched_input_masks)
-
     def beamsearch_get_beams_from_outputs(self, sync):
         for i in range(sync.dhold.considered_tokens_num[0]):
             # case considered token is stop token:
@@ -386,7 +349,6 @@ class ProcessorHelper():
             sync.dhold.total_probs.append(total_prob)
             sync.dhold.prediction_paths_probs.append([math.log(sync.dhold.logits_merker[0, 0, i, 1])]+highest_path_probs)
             sync.dhold.prediction_paths_indices.append([sync.dhold.logits_merker[0, 0, i, 0]]+highest_path_indices)
-
     def beamsearch_get_best_beam_from_beams(self, sync):
         if sync.dhold.inputs['debugmode']:
             print("paths total probs:", [round(entry, 3) for entry in sync.dhold.total_probs])
@@ -395,3 +357,42 @@ class ProcessorHelper():
 
         sync.dhold.best_beam_probs = sync.dhold.prediction_paths_probs[best_beam]
         sync.dhold.best_beam_indices = sync.dhold.prediction_paths_indices[best_beam]
+    def beamsearch_get_returned_content(self, sync):
+        if sync.dhold.was_list:
+            sync.dhold.returned_content = [entry.strip() for entry in [sync.mhold.model.detokenize(sync.dhold.inputs['tokens'][sync.dhold.original_input_len:]).decode('UTF-8')]]
+        else:
+            try:
+                sync.dhold.returned_content = [entry.strip() for entry in [sync.mhold.tokenizer.decode(sync.dhold.inputs['tokens'].tolist()[0][sync.dhold.original_input_len:], skip_special_tokens=True)]]
+            except:
+                sync.dhold.returned_content = [entry.strip() for entry in [sync.mhold.processor.tokenizer.decode(sync.dhold.inputs['tokens'].tolist()[0][sync.dhold.original_input_len:], skip_special_tokens=True)]]
+    def beamsearch_check_break_condition(self, sync):
+        sync.dhold.beamsearch_break = False
+        if np.any(np.array(sync.dhold.tokens_to_add) == sync.mhold.stop_token):
+            if sync.dhold.inputs['debugmode']:
+                print("tokens to add contained stop token, stopping.")
+            sync.dhold.beamsearch_break = True
+        
+        if sync.dhold.generated_tokens >= sync.dhold.inputs['max_new_tokens']:
+            sync.dhold.beamsearch_break = True
+            if sync.dhold.inputs['debugmode']:
+                print("reached max_new_tokens, stopping.")
+    def beamsearch_do_search(self, sync):
+        if sync.dhold.considered_tokens_num[0] == 1:
+            sync.dhold.tokens_to_add = [sync.dhold.logits[0, 0, 0, 0]]
+            sync.dhold.best_path_indices = sync.dhold.tokens_to_add
+            sync.dhold.additional_sure_tokens = 0
+            sync.dhold.logits_merker = copy.deepcopy(sync.dhold.logits)
+            sync.dhold.considered_tokens_num_merker = copy.deepcopy(sync.dhold.considered_tokens_num)
+            sync.dhold.best_beam_indices = [sync.dhold.logits[0, 0, 0, 0]]
+            
+        else:
+            sync.get_best_path()
+
+            sync.dhold.tokens_to_add = [sync.dhold.best_beam_indices[0]] # at least at the init token for the best path
+            sync.dhold.additional_sure_tokens = 0
+            for i in range(1, len(sync.dhold.best_beam_indices)): # skip 0 since already added
+                if sync.dhold.best_beam_probs[i] >= math.log(sync.dhold.inputs['min_conf_for_sure']):
+                    sync.dhold.additional_sure_tokens += 1
+                    sync.dhold.tokens_to_add.append(sync.dhold.best_beam_indices[i])
+                else:
+                    break
