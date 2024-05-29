@@ -26,14 +26,6 @@ class Sync():
 
         args = self.dhold.gen_inputs
 
-        self.dhold.total_probs  = []
-        self.dhold.prediction_paths_probs = []
-        self.dhold.prediction_paths_indices = []
-        self.dhold.skip_path = []
-
-        self.dhold.logits_merker = copy.deepcopy(self.dhold.logits)
-        self.dhold.considered_tokens_num_merker = copy.deepcopy(self.dhold.considered_tokens_num)
-
         self.phelp.beamsearch_setup_inputs(self)
 
         self.phelp.beamsearch_do_inference(self)
