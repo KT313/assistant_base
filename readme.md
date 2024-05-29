@@ -1,8 +1,9 @@
 ## Web assistant (WIP)  
 
+working:  
 - image support  
 - multiple models  
-- custom adaptive beam search
+- custom adaptive beam search  
 
 ### running it  
 `cd server_inference && python3 server.py # this is enough if you only want api without web ui`  
