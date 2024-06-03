@@ -35,13 +35,13 @@ class Sync():
 
 
 
-    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, llama_sequencial_batch=False):
-        print("num tokens to gen 2:", limit_tokens)
+    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, sequencial_batch=False):
+        # print("num tokens to gen 2:", limit_tokens)
         self.dhold.start_time_inference = time.time()
         self.dhold.limit_tokens = limit_tokens
         self.dhold.alternative_input = alternative_input
         self.dhold.alternative_mask = alternative_mask
-        self.dhold.llama_sequencial_batch = llama_sequencial_batch
+        self.dhold.sequencial_batch = sequencial_batch
 
         self.phelp.inference_check_for_error_and_limit_tokens(self)
 

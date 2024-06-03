@@ -117,6 +117,7 @@ def base64_to_pil(base64_images):
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
 def find_top_indexes(arr, n_top):
     arr = np.array(arr)
+    print("in:", arr.shape)
     if len(arr.shape) == 2:
         arr = np.expand_dims(arr, axis=0)
 
@@ -131,6 +132,16 @@ def find_top_indexes(arr, n_top):
     result_indices = top_indexes[..., ::-1]
 
     result = np.stack([result_indices, result_probs], axis=-1)
-    result = np.swapaxes(result,0,1)
-
+    # result = np.swapaxes(result,0,1)
+    print("out:", result.shape)
     return result
+
+def test_models(model, test_mode, multi_turn, infer):
+    if not isinstance(model, list):
+        model = [model]
+
+    if test_mode:
+        for entry in model:
+            if not multi_turn:
+                print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '8', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '4', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})

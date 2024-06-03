@@ -30,15 +30,9 @@ def infer(manual_request = None):
 
 if __name__ == '__main__':
     test_mode = True
+    multi_turn = False
     models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
-    model = models[:]
-    
-    if not isinstance(model, list):
-        model = [model]
+    model = models[1]
 
-    if test_mode:
-        for entry in model:
-            print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
-            infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '4', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '3', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})
-    else:
-        app.run(port=10000)
+    test_models(model, test_mode, multi_turn, infer)
+    if not test_model: app.run(port=10000)
