@@ -201,7 +201,7 @@ class ProcessorHelper():
 
             sync.dhold.gen_input = sync.dhold.inputs['tokens']
             sync.dhold.output_processor = lambda output: [out['text'] for out in output['choices']]
-            sync.dhold.shape_attr = lambda output: [1, output['usage']['completion_tokens']]
+            sync.dhold.shape_attr = lambda output: [1, max(1, output['usage']['completion_tokens'])] # min shape 1 because stop token output results in completion tokens 0 for some reason
             sync.dhold.input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
             sync.dhold.get_logits = lambda scores: find_top_indexes(sync.mhold.model._scores[-sync.dhold.output_shape[-1]:], sync.dhold.inputs['max_num_beams'])
     
@@ -239,6 +239,22 @@ class ProcessorHelper():
                 sync.dhold.gen_output = sync.dhold.gen_function(entry, **sync.dhold.gen_kwargs)
     
                 returned_content.append([entry for entry in sync.dhold.output_processor(sync.dhold.gen_output)])
+                for key, val in sync.dhold.gen_output.items():
+                    try:
+                        print(key, type(val), val.shape)
+                    except:
+                        try:
+                            print(key, type(val), len(val))
+                        except:
+                            print(key, type(val))
+                for key, val in sync.dhold.gen_output['usage'].items():
+                    try:
+                        print("   ", key, type(val), val.shape)
+                    except:
+                        try:
+                            print("   ", key, type(val), len(val))
+                        except:
+                            print("   ", key, type(val), val)
                 merker = getattr(sync.dhold.gen_output, sync.dhold.shape_attr) if isinstance(sync.dhold.shape_attr, str) else sync.dhold.shape_attr(sync.dhold.gen_output)
                 merker[0] = len(sync.dhold.gen_input)
                 sync.dhold.output_shape = merker

@@ -34,5 +34,5 @@ if __name__ == '__main__':
     models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
     model = models[1]
 
-    test_models(model, test_mode, multi_turn, infer)
-    if not test_model: app.run(port=10000)
+    if test_mode: test_models(model, test_mode, multi_turn, infer)
+    else: app.run(port=10000)
