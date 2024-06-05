@@ -127,7 +127,6 @@ class ProcessorHelper():
                 
 
             print("\n")
-            print(sync.mhold.detokenize(sync.dhold.best_beam_indices))
             print(f"current generation: {''.join(sync.mhold.detokenize(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)]))}\x1b[32m{''.join(sync.mhold.detokenize(sync.dhold.tokens_to_add))}\x1b[0m \x1b[37m{''.join(sync.mhold.detokenize(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:]))}\x1b[0m") # \[90m or \[37m for gray \x1b[43
             print("\n---------------------------------------------------------------\n\n")
 
@@ -201,9 +200,13 @@ class ProcessorHelper():
 
             sync.dhold.gen_input = sync.dhold.inputs['tokens']
             sync.dhold.output_processor = lambda output: [out['text'] for out in output['choices']]
-            sync.dhold.shape_attr = lambda output: [1, max(1, output['usage']['completion_tokens'])] # min shape 1 because stop token output results in completion tokens 0 for some reason
+            sync.dhold.shape_attr = lambda output: [1, output['usage']['completion_tokens']] if output['choices'][0]['finish_reason'] != "stop" else [1, output['usage']['completion_tokens']+1] # min shape 1 because stop token output results in completion tokens 0 for some reason
             sync.dhold.input_shape_attr = lambda output: [1, output['usage']['prompt_tokens']]
             sync.dhold.get_logits = lambda scores: find_top_indexes(sync, sync.mhold.model._scores[-sync.dhold.output_shape[-1]:], sync.dhold.inputs['max_num_beams'])
+
+        if sync.mhold.backend == "transformers":
+            sync.mhold.stop_token = [sync.mhold.stop_token]
+            sync.mhold.stop_token.append(sync.mhold.tokenizer("<|eot_id|>").input_ids[0])
     
     def inference_check_stop_token_and_alternative_inputs(self, sync):
         if sync.mhold.stop_token == None:
@@ -218,6 +221,7 @@ class ProcessorHelper():
             if not sync.dhold.sequencial_batch and sync.mhold.backend == "llama-cpp" and len(sync.dhold.gen_input.shape) > 1:
                 sync.dhold.gen_input = sync.dhold.gen_input[0]
         if not sync.dhold.sequencial_batch:
+            sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
             if not sync.mhold.backend == "llama-cpp":
                 sync.dhold.gen_kwargs['attention_mask'] = torch.ones_like(sync.dhold.gen_input, device=sync.config['torch_device'])
             sync.dhold.gen_output = sync.dhold.gen_function(sync.dhold.gen_input, **sync.dhold.gen_kwargs)
@@ -229,6 +233,7 @@ class ProcessorHelper():
             returned_content = []
             output_shape = []
             logits = []
+            stopped = []
             sync.dhold.gen_kwargs['stop'] = []
             for index, entry in enumerate(sync.dhold.gen_input):
                 if isinstance(entry, torch.Tensor) and len(entry.shape) == 1:
@@ -236,8 +241,15 @@ class ProcessorHelper():
                 if not sync.mhold.backend == "llama-cpp":
                     sync.dhold.gen_kwargs['attention_mask'] = torch.ones_like(entry, device=sync.config['torch_device'])
                 sync.dhold.gen_output = sync.dhold.gen_function(entry, **sync.dhold.gen_kwargs)
-    
+                if sync.dhold.gen_output['choices'][0]['finish_reason'] == "stop":
+                    stopped.append(True)
+                else:
+                    stopped.append(False)
+                # if sync.dhold.gen_output['choices'][0]['finish_reason'] == "stop":
+                #     sync.dhold.gen_output[choices] = [choice[text] for choice in sync.dhold.gen_output[choices]]
+                
                 returned_content.append([entry for entry in sync.dhold.output_processor(sync.dhold.gen_output)])
+
                 merker = getattr(sync.dhold.gen_output, sync.dhold.shape_attr) if isinstance(sync.dhold.shape_attr, str) else sync.dhold.shape_attr(sync.dhold.gen_output)
                 merker[0] = len(sync.dhold.gen_input)
                 sync.dhold.output_shape = merker
@@ -246,21 +258,19 @@ class ProcessorHelper():
             sync.dhold.returned_content = returned_content
             sync.dhold.output_shape = np.array(output_shape)
             sync.dhold.logits = np.concatenate(logits, axis=0)
+            sync.dhold.stopped = stopped
             
     def inference_get_considered_tokens_num(self, sync):
         # get number of considered tokens for each batch
-        print(f"logits shape: {sync.dhold.logits.shape}")
         merker = [1 for _ in range(sync.dhold.logits.shape[0])] #  add the first one by default
         for batch_num in range(sync.dhold.logits.shape[0]):
             for top_logit_num in range(1, sync.dhold.logits.shape[2]):
-                print(f"logit prob at [{batch_num}, 0, {top_logit_num}, 1]: {sync.dhold.logits[batch_num][0][top_logit_num][1]}")
                 if sync.dhold.logits[batch_num][0][top_logit_num][1] >= sync.dhold.inputs['min_conf_for_consider']:
                     merker[batch_num] += 1
                 else: 
                     break
                 if np.sum(sync.dhold.logits[batch_num][0][:merker[batch_num]][0]) >= sync.dhold.inputs['prob_sum_for_search']:
                     break
-        print(f"merker: {merker}")
         sync.dhold.considered_tokens_num = np.array(merker)
     def inference_check_for_error_and_limit_tokens(self, sync):
         if sync.dhold.error:
@@ -290,7 +300,6 @@ class ProcessorHelper():
         else:
             sync.do_inference(limit_tokens=sync.dhold.inputs['depth_beams'], alternative_input=sync.dhold.batched_input_tokens)
     def beamsearch_get_beams_from_outputs(self, sync):
-        print("beamsearch_get_beams_from_outputs sync.dhold.considered_tokens_num:", sync.dhold.considered_tokens_num, "considered_tokens_num_merker:", sync.dhold.considered_tokens_num_merker)
         for i in range(sync.dhold.considered_tokens_num_merker[0]):
             # case considered token is stop token:
             if np.any(sync.dhold.logits_merker[0, 0, i, 0] == sync.mhold.stop_token):
@@ -302,7 +311,6 @@ class ProcessorHelper():
                 
             highest_path_probs = []
             highest_path_indices = []
-            print(f"logits shape: {sync.dhold.logits.shape}")
             for token_num in range(sync.dhold.logits.shape[1]):
                 highest_path_probs.append(math.log(sync.dhold.logits[i, token_num, 0, 1]))
                 highest_path_indices.append(sync.dhold.logits[i, token_num, 0, 0].astype(np.int32))
@@ -312,12 +320,12 @@ class ProcessorHelper():
             sync.dhold.total_probs.append(total_prob)
             sync.dhold.prediction_paths_probs.append([math.log(sync.dhold.logits_merker[0, 0, i, 1])]+highest_path_probs)
             sync.dhold.prediction_paths_indices.append([sync.dhold.logits_merker[0, 0, i, 0].astype(np.int32)]+highest_path_indices)
-            print(f"prediction path {i}: {[sync.dhold.logits_merker[0, 0, i, 0].astype(np.int32)]+highest_path_indices}   detokenized: {sync.mhold.detokenize([sync.dhold.logits_merker[0, 0, i, 0].astype(np.int32)]+highest_path_indices)}")
     def beamsearch_get_best_beam_from_beams(self, sync):
         if sync.dhold.inputs['debugmode']:
             print("paths total probs:", [round(entry, 3) for entry in sync.dhold.total_probs])
 
         best_beam = max(enumerate(sync.dhold.total_probs),key=lambda x: x[1])[0]
+        sync.dhold.best_beam_index = best_beam
 
         sync.dhold.best_beam_probs = sync.dhold.prediction_paths_probs[best_beam]
         sync.dhold.best_beam_indices = sync.dhold.prediction_paths_indices[best_beam]
@@ -325,7 +333,11 @@ class ProcessorHelper():
         sync.dhold.returned_content = sync.mhold.detokenize(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:], skip_special=True)
     def beamsearch_check_break_condition(self, sync):
         sync.dhold.beamsearch_break = False
-        if np.any(np.array(sync.dhold.tokens_to_add) == sync.mhold.stop_token):
+        if "best_beam_index" in sync.dhold.__dict__ and sync.dhold.stopped[sync.dhold.best_beam_index]:
+            was_stopped = True
+        else:
+            was_stopped= False
+        if np.any(np.isin(sync.dhold.tokens_to_add, sync.mhold.stop_token)) or was_stopped:
             if sync.dhold.inputs['debugmode']:
                 print("tokens to add contained stop token, stopping.")
             sync.dhold.beamsearch_break = True
@@ -336,9 +348,7 @@ class ProcessorHelper():
                 print("reached max_new_tokens, stopping.")
     def beamsearch_do_search(self, sync):
         sync.dhold.considered_tokens_num_merker = copy.deepcopy(sync.dhold.considered_tokens_num)
-        print("beamsearch_do_search sync.dhold.considered_tokens_num:", sync.dhold.considered_tokens_num, "considered_tokens_num_merker:", sync.dhold.considered_tokens_num_merker)
         if sync.dhold.considered_tokens_num_merker[0] == 1:
-            print("should be single path")
             sync.dhold.tokens_to_add = [sync.dhold.logits[0, 0, 0, 0].astype(np.int32)]
             sync.dhold.best_path_indices = sync.dhold.tokens_to_add
             sync.dhold.additional_sure_tokens = 0

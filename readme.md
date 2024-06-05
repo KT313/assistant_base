@@ -1,4 +1,7 @@
-## Web assistant (WIP)  
+Free to use under the GNU Affero General Public License v3.0.  
+A closed-source license can be obtained for commercial use. If interested, please send an inquiry to asba@tobs.cloud.
+
+## Asba Web Assistant
 
 working:  
 - image support  
