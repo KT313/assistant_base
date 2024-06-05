@@ -29,7 +29,7 @@ def infer(manual_request = None):
         return infer_helper(request.get_json())
 
 if __name__ == '__main__':
-    test_mode = True
+    test_mode = False
     multi_turn = False
     models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
     model = models[:]
