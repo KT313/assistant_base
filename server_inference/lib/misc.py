@@ -1,12 +1,13 @@
 import os
 import json
-
+system_prompt = "You are a helpful assistant."
 functions = """You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {"type": "function", "function": {"name": "get_web_info", "description": "get_web_info(symbol: str) -> dict - Get web results for a given query.\\n\\n    Args:\\n        query (str): The web search query.\\n\\n    Returns:\\n        dict: A dictionary containing web search results.\\n            Keys:\\n                - \'website\': The first returned website.\\n                - \'website_content\': The content of the website.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}} {"type": "function", "function": {"name": "run_python", "description": "run_python(code: str) -> dict - Returns stdout and stderr from running the provided coda.\\n\\n    Args:\\n        code (str): The python code to run.\\n\\n    Returns:\\n        dict: A dictionary the outputs.\\n            Keys:\\n                - \'stdout\': stdout from running the python code.\\n                - \'stderr\': stderr from running the python code.", "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}}  </tools> Use the following pydantic model json schema for each tool call you will make: {"properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"], "title": "FunctionCall", "type": "object"} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
 <tool_call>
 {"arguments": <args-dict>, "name": <function-name>}
 </tool_call>"""
 
 def setup():
+    a = """
     with open(f"config.json", "r") as config_file:
         config_tmp = json.loads(config_file.read().strip())
     
@@ -14,6 +15,7 @@ def setup():
     
     with open(f"config.json", "w") as config_file:
         config_file.write(json.dumps(config_tmp, indent=4))
+    """
 
     with open(f"config.json", "r") as config_file:
         config = json.loads(config_file.read().strip())
@@ -113,7 +115,7 @@ def base64_to_pil(base64_images):
 
 
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
-def find_top_indexes(arr, n_top):
+def find_top_indexes(sync, arr, n_top):
     arr = np.array(arr)
     if len(arr.shape) == 2:
         arr = np.expand_dims(arr, axis=0)
@@ -129,6 +131,17 @@ def find_top_indexes(arr, n_top):
     result_indices = top_indexes[..., ::-1]
 
     result = np.stack([result_indices, result_probs], axis=-1)
-    result = np.swapaxes(result,0,1)
 
+    if not sync.mhold.backend == "llama-cpp":
+        result = np.swapaxes(result,0,1)
     return result
+
+def test_models(model, test_mode, multi_turn, infer):
+    if not isinstance(model, list):
+        model = [model]
+
+    if test_mode:
+        for entry in model:
+            if not multi_turn:
+                print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '64', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '4', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})

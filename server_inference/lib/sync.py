@@ -25,32 +25,21 @@ class Sync():
     def get_best_path(self):
 
         args = self.dhold.gen_inputs
-
-        self.dhold.total_probs  = []
-        self.dhold.prediction_paths_probs = []
-        self.dhold.prediction_paths_indices = []
-        self.dhold.skip_path = []
-
-        self.dhold.logits_merker = copy.deepcopy(self.dhold.logits)
-        self.dhold.considered_tokens_num_merker = copy.deepcopy(self.dhold.considered_tokens_num)
-
         self.phelp.beamsearch_setup_inputs(self)
-
         self.phelp.beamsearch_do_inference(self)
-
         self.phelp.beamsearch_get_beams_from_outputs(self)
         self.phelp.beamsearch_get_best_beam_from_beams(self)
 
 
 
-    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, llama_sequencial_batch=False):
+    def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, sequencial_batch=False):
         self.dhold.start_time_inference = time.time()
         self.dhold.limit_tokens = limit_tokens
         self.dhold.alternative_input = alternative_input
         self.dhold.alternative_mask = alternative_mask
-        self.dhold.llama_sequencial_batch = llama_sequencial_batch
+        self.dhold.sequencial_batch = sequencial_batch
 
-        self.phelp.check_for_error_and_limit_tokens(self)
+        self.phelp.inference_check_for_error_and_limit_tokens(self)
 
         
         

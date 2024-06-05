@@ -29,5 +29,10 @@ def infer(manual_request = None):
         return infer_helper(request.get_json())
 
 if __name__ == '__main__':
-    # infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': 'Hermes-2-Theta-Llama-3-8B', 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '4', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '3', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})
-    app.run(port=10000)
+    test_mode = False
+    multi_turn = False
+    models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
+    model = models[:]
+
+    if test_mode: test_models(model, test_mode, multi_turn, infer)
+    else: app.run(port=10000)
