@@ -25,12 +25,13 @@ class Sync():
     def get_best_path(self):
 
         args = self.dhold.gen_inputs
-
+        print(f"1 self.dhold.considered_tokens_num[0]: {self.dhold.considered_tokens_num[0]}")
         self.phelp.beamsearch_setup_inputs(self)
-
+        print(f"2 self.dhold.considered_tokens_num[0]: {self.dhold.considered_tokens_num[0]}")
         self.phelp.beamsearch_do_inference(self)
-
+        print(f"3 self.dhold.considered_tokens_num[0]: {self.dhold.considered_tokens_num[0]}")
         self.phelp.beamsearch_get_beams_from_outputs(self)
+        print(f"4 self.dhold.considered_tokens_num[0]: {self.dhold.considered_tokens_num[0]}")
         self.phelp.beamsearch_get_best_beam_from_beams(self)
 
 

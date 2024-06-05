@@ -115,9 +115,8 @@ def base64_to_pil(base64_images):
 
 
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
-def find_top_indexes(arr, n_top):
+def find_top_indexes(sync, arr, n_top):
     arr = np.array(arr)
-    print("in:", arr.shape)
     if len(arr.shape) == 2:
         arr = np.expand_dims(arr, axis=0)
 
@@ -132,8 +131,9 @@ def find_top_indexes(arr, n_top):
     result_indices = top_indexes[..., ::-1]
 
     result = np.stack([result_indices, result_probs], axis=-1)
-    # result = np.swapaxes(result,0,1)
-    print("out:", result.shape)
+
+    if not sync.mhold.backend == "llama-cpp":
+        result = np.swapaxes(result,0,1)
     return result
 
 def test_models(model, test_mode, multi_turn, infer):
