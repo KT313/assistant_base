@@ -47,7 +47,8 @@ class Sync():
         self.phelp.inference_check_stop_token_and_alternative_inputs(self)
 
         self.phelp.inference_do_inference(self)
-        self.phelp.inference_get_considered_tokens_num(self)
+        if self.dhold.inputs['beam_config']['use_beam_search']:
+            self.phelp.inference_get_considered_tokens_num(self)
 
         if self.dhold.inputs['debugmode']: print("self.dhold.returned_content:", self.dhold.returned_content)
 

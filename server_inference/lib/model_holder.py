@@ -47,6 +47,8 @@ class ModelHolder():
         if model_name in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
             self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
             self.detokenize_helper = lambda entry_list, skip_special=False: self.model.detokenize(entry_list).decode('UTF-8')
+
+        self.model.eval()
             
         self.backend = sync.config['models'][model_name]['backend']
         self.template = sync.config['models'][model_name]['template']

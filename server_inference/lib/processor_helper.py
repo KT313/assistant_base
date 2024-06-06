@@ -134,13 +134,22 @@ class ProcessorHelper():
 
     def inference_setup_args(self, sync):        
         sync.mhold.stop_token = None
-        sync.dhold.gen_kwargs = {
-            'max_new_tokens': sync.dhold.max_tokens_this_gen,
-            'do_sample': False,
-            'temperature': 1,
-            'output_scores': True,
-            'return_dict_in_generate': True,
-        }
+        if sync.dhold.inputs['beam_config']['use_beam_search']:
+            sync.dhold.gen_kwargs = {
+                'max_new_tokens': sync.dhold.max_tokens_this_gen,
+                'do_sample': False,
+                'temperature': 1,
+                'output_scores': True,
+                'return_dict_in_generate': True,
+            }
+        else:
+            sync.dhold.gen_kwargs = {
+                'max_new_tokens': sync.dhold.max_tokens_this_gen,
+                'do_sample': False,
+                'temperature': 1,
+                # 'output_scores': True,
+                'return_dict_in_generate': True,
+            }
         sync.dhold.got_input_shape_already = True
         
 
@@ -233,7 +242,8 @@ class ProcessorHelper():
         
                     sync.dhold.returned_content = [entry for entry in sync.dhold.output_processor(sync.dhold.gen_output)]
                     sync.dhold.output_shape = getattr(sync.dhold.gen_output, sync.dhold.shape_attr) if isinstance(sync.dhold.shape_attr, str) else sync.dhold.shape_attr(sync.dhold.gen_output)
-                    sync.dhold.logits = sync.dhold.get_logits(sync.dhold.gen_output)
+                    if sync.dhold.inputs['beam_config']['use_beam_search']:
+                        sync.dhold.logits = sync.dhold.get_logits(sync.dhold.gen_output)
                 else:
                     if sync.dhold.inputs['debugmode']: print("inference will start (sequential batch)")
                     returned_content = []
@@ -263,7 +273,8 @@ class ProcessorHelper():
         
                     sync.dhold.returned_content = returned_content
                     sync.dhold.output_shape = np.array(output_shape)
-                    sync.dhold.logits = np.concatenate(logits, axis=0)
+                    if sync.dhold.inputs['beam_config']['use_beam_search']:
+                        sync.dhold.logits = np.concatenate(logits, axis=0)
                     sync.dhold.stopped = stopped
             except RuntimeError as e:
                 if "out of memory" in str(e):
