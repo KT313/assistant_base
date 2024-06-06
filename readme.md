@@ -1,6 +1,8 @@
 Free to use under the GNU Affero General Public License v3.0.  
 A closed-source license can be obtained for commercial use. If interested, please send an inquiry to asba@tobs.cloud.
 
+This project may use optional libraries like LlaVA-NeXT that are subject to their respective original licenses, which may be required to support certain models or functions. This project can be modified to run without these optional libraries if required.
+
 ## Asba Web Assistant
 
 working:  

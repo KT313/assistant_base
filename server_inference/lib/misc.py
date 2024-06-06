@@ -85,10 +85,35 @@ def prep_for_new_gen(sync, request_json, show_info=False):
     
     dhold.start_time_total =  time.time()
     data = dhold.request_json
+    print("inputs:")
+    counter = 1
     if show_info:
         for key, val in data.items():
             if key != "images":
-                print(key, val, flush=True)
+                if key == "chat":
+                    print(" |", key, "(dict):")
+                    for entry in val:
+                        if counter%2==0:
+                            print("    |", f"{str(entry['role']+': ').ljust(14, '.')} {entry['content']}")
+                        else:
+                            print("    |", f"{str(entry['role']+': ').ljust(14)} {entry['content']}")
+                        counter += 1
+                else:
+                    if not isinstance(val, dict):
+                        if counter%2==0:
+                            print(" |", str(key+': ').ljust(24, '.'), val, flush=True)
+                        else:
+                            print(" |", str(key+': ').ljust(24), val, flush=True)
+                        counter += 1
+                    else:
+                        print(" |", key, "(dict):")
+                        for sub_key, sub_val in val.items():
+                            if counter%2==0:
+                                print("    |", str(sub_key+': ').ljust(24, '.'), sub_val, flush=True)
+                            else:
+                                print("    |", str(sub_key+': ').ljust(24), sub_val, flush=True)
+                            counter += 1
+                        
 
     if not isinstance(data['chat'], list):
         data['chat'] = [data['chat']]
@@ -98,7 +123,10 @@ def prep_for_new_gen(sync, request_json, show_info=False):
         inputs['images'] = base64_to_pil(inputs['images'])
         if show_info:
             for image in inputs['images']:
-                print(image.size)
+                print(" |", image.size)
+
+    if show_info:
+        print()
     inputs['max_new_tokens'] = int(inputs['max_new_tokens'].strip())
     
     dhold.inputs = inputs
@@ -144,4 +172,4 @@ def test_models(model, test_mode, multi_turn, infer):
         for entry in model:
             if not multi_turn:
                 print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
-                infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '64', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '4', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})
+                infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '8', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': False, 'max_num_beams': '2', 'depth_beams': '4', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})

@@ -1,4 +1,19 @@
 document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('nav ul li a');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            tabs.forEach(tab => tab.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(this.getAttribute('data-tab')).classList.add('active');
+        });
+    });
+    
     document.getElementById('display-text').innerHTML = "";
     document.getElementById('display-text').chat = [];
     fetchInitText();
@@ -40,6 +55,10 @@ function sendUserMsg() {
     const prob_sum_for_search = document.getElementById('prob_sum_for_search');
     
     const usefunctions = document.getElementById('usefunctions-checkbox');
+    const usevoiceinput = document.getElementById('usevoiceinput-checkbox');
+    const usevoiceoutput = document.getElementById('usevoiceoutput-checkbox');
+    const allowimagegen = document.getElementById('allowimagegen-checkbox');
+    const agenttaskmode = document.getElementById('agenttaskmode-checkbox');
     
     const modeldtype = document.querySelector('input[name="model-dtype"]:checked');
     
@@ -70,6 +89,10 @@ function sendUserMsg() {
             'model': model_val, 
             'manual_system_prompt': manualSystemPrompt.value, 
             'use_functions': usefunctions.checked, 
+            'use_voiceinput': usevoiceinput.checked, 
+            'use_voiceoutput': usevoiceoutput.checked, 
+            'allow_imagegen': allowimagegen.checked, 
+            'agent_task_mode': agenttaskmode.checked, 
             'model_dtype': modeldtype.value, 
             'max_new_tokens': max_new_tokens.value, 
             'debugmode': debugmode.checked, 
@@ -161,6 +184,22 @@ function moreInfoCheckbox() {
 
 function usefunctionsCheckbox() {
     console.log("changed usefunctions checkbox");
+}
+
+function usevoiceinputCheckbox() {
+    console.log("changed usevoiceinput checkbox");
+}
+
+function usevoiceoutputCheckbox() {
+    console.log("changed usevoiceoutput checkbox");
+}
+
+function allowimagegenCheckbox() {
+    console.log("changed allowimagegen checkbox");
+}
+
+function agenttaskmodeCheckbox() {
+    console.log("changed agenttaskmode checkbox");
 }
 
 function usebeamsearchCheckbox() {

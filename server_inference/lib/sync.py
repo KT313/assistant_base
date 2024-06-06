@@ -55,33 +55,36 @@ class Sync():
 
     # sets dhold.returned_content, dhold.output_shape, self.dhold.logits (and maybe dhold.input_shape)
     def generate(self):
-        
-        # if normal
-        # generate no limit
-        if not self.dhold.inputs['beam_config']['use_beam_search']:
-            self.do_inference()
-        else:
-            self.dhold.generated_tokens = 0
-            while self.dhold.generated_tokens < self.dhold.inputs['max_new_tokens']:
-                # generate limit 1 token
-                self.do_inference(limit_tokens=1)
+        gc.collect()
+        torch.cuda.empty_cache()
 
-                self.phelp.beamsearch_do_search(self)
-                self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
-                self.phelp.append_tokens_to_add_to_tokens(self)
-                
-                self.phelp.print_beam_debug_info(self)
-                
-                self.phelp.beamsearch_check_break_condition(self)
-                if self.dhold.beamsearch_break:
-                    break
-
-            # end
-            self.phelp.beamsearch_get_returned_content(self)
+        with torch.autograd.grad_mode.inference_mode():
+            
+            # if normal
+            # generate no limit
+            if not self.dhold.inputs['beam_config']['use_beam_search']:
+                self.do_inference()
+            else:
+                self.dhold.generated_tokens = 0
+                while self.dhold.generated_tokens < self.dhold.inputs['max_new_tokens']:
+                    # generate limit 1 token
+                    self.do_inference(limit_tokens=1)
+    
+                    self.phelp.beamsearch_do_search(self)
+                    self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
+                    self.phelp.append_tokens_to_add_to_tokens(self)
+                    
+                    self.phelp.print_beam_debug_info(self)
+                    
+                    self.phelp.beamsearch_check_break_condition(self)
+                    if self.dhold.beamsearch_break:
+                        break
+    
+                # end
+                self.phelp.beamsearch_get_returned_content(self)
             
 
 
-    
     def make_new_dhold(self):
         self.dhold = DataHolder()
 
