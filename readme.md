@@ -11,6 +11,7 @@ working:
 - custom adaptive beam search
 
 WIP:
+- Agent Task Mode (Structuring large / complicated tasks and progressively working on it)
 - txt2img, txt+img2img
 - training support
 
