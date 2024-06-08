@@ -51,7 +51,7 @@ class ProcessorHelper():
             prompt_string += f"{template['ai role']}"
 
         sync.dhold.prompt_string = prompt_string
-        print(f"built prompt string:\n\"{sync.dhold.prompt_string}\"")
+        if sync.dhold.inputs['debugmode']: print(f"built prompt string:\n\"{sync.dhold.prompt_string}\"")
     def load_beam_config(self, sync):        
         sync.dhold.inputs['max_num_beams'] = int(sync.dhold.inputs['beam_config']['max_num_beams'].strip())
         sync.dhold.inputs['depth_beams'] = int(sync.dhold.inputs['beam_config']['depth_beams'].strip())
@@ -389,3 +389,22 @@ class ProcessorHelper():
                     sync.dhold.tokens_to_add.append(sync.dhold.best_beam_indices[i])
                 else:
                     break
+
+    def build_task(self, sync, instruction, information_input=None):
+        sync.dhold.inputs['chat'] = [chat for chat in sync.dhold.inputs['chat'] if chat['role'] != "System"]
+        for i in range(len(sync.dhold.inputs['chat'])):
+            old_role = sync.dhold.inputs['chat'][i]['role']
+            if old_role == "User": sync.dhold.inputs['chat'][i]['role'] = "user"
+            if old_role == "AI": sync.dhold.inputs['chat'][i]['role'] = "assistant"
+
+        instruction_part = instruction
+        if information_input == None:
+            information_input_part = sync.dhold.inputs['chat'][-1]['content']
+        else:
+            information_input_part = information_input
+
+        if sync.dhold.inputs['debugmode']: print("instruction_part:", instruction_part, "\ninformation_input_part:", information_input_part)
+        sync.dhold.inputs['chat'] = [{'role': 'system', 'content': instruction_part}, {'role': 'user', 'content': information_input_part}]
+
+        if sync.dhold.inputs['debugmode']: print('\nbuilding new prompt string')
+        self.build_prompt_string(sync)

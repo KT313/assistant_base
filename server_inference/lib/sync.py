@@ -58,6 +58,7 @@ class Sync():
     def generate(self):
         gc.collect()
         torch.cuda.empty_cache()
+        self.prep_gen_inputs()
 
         with torch.autograd.grad_mode.inference_mode():
             
@@ -83,6 +84,37 @@ class Sync():
     
                 # end
                 self.phelp.beamsearch_get_returned_content(self)
+
+
+
+    def solve_agent_task(self):
+        base_instruction = "You are part of a network of agents where each agent has its own task, in order to handle complex queries. Your task is to "
+        self.phelp.build_task(
+            self, 
+            instruction = base_instruction+"break down the users query into small chunks of facts. Do not solve the query. Only write the facts that are explicitly stated in the users query. After extracting the facts, state the task that the users query contains. Example:\nfact 1: ...\nfact 2: ...\n...\nquery: ...",
+            information_input=None
+        )
+        self.generate()
+        result_0 = self.dhold.returned_content[0]
+        print(f"\n\n\nresult:\n\"{result_0}\"")
+
+        self.phelp.build_task(
+            self, 
+            instruction = base_instruction+"Infer new facts based on the provided facts, if possible. If no correct new facts can be infered, only write the given facts. Do not solve the query. Think step by step while solving your task and always lay out your thoughts to avoid making mistakes or incorrect statements. Before writing down something as a statement, visualize it symbolically to make sure your logic is sound. Example:\nfact 1: ...\nfact 2: ...\n...\nquery: ...",
+            information_input=result_0
+        )
+        self.generate()
+        result_1 = self.dhold.returned_content[0]
+        print(f"\n\n\nresult:\n\"{result_1}\"")
+
+        self.phelp.build_task(
+            self, 
+            instruction = base_instruction+"make sure another agents task was completed correctly and no mistakes were made. In the following you will see the information given to this agent, its instruction and its output. Do not follow the other agents instruction, only follow this instruction: Before deciding on a rating, Think step by step through the other agents logic so make sure there are no flaws that are not noticable on a quick look. Always lay out your thoughts at every step. After you went through everything, rate the agents output from 0 to 9 on correctness, where 0 means that mistakes were made or something incorrect was written, and 9 means that the task was solved perfectly. ",
+            information_input="given information to the agent: "+result_0+"\ninstruction: \""+base_instruction+'Infer new facts based on the provided facts, if possible. If no correct new facts can be infered, only write the given facts. Do not solve the query. Example:\nfact 1: ...\nfact 2: ...\n...\nquery: ...'+"\"\nagents result: "+result_1
+        )
+        self.generate()
+        result_2 = self.dhold.returned_content[0]
+        print(f"\n\n\nresult:\n\"{result_2}\"")
             
 
 
