@@ -6,14 +6,18 @@ This project may use optional libraries like LlaVA-NeXT that are subject to thei
 ## Asba Web Assistant
 
 working:  
-- image support  
+- image input support (Llama-3-Llava & phi-3-vision)  
 - multiple models  
-- custom adaptive beam search  
+- custom adaptive beam search
+
+WIP:
+- txt2img, txt+img2img
+- training support
 
 ### running it  
-`cd server_inference && python3 server.py # this is enough if you only want api without web ui`  
+1. `./start_infer.sh` # this is enough if you only want the api without web ui  
 
-`cd server_web && python3 server.py`
+2. `./start_web.sh` # for the web-ui
 
 ### more info  
 
