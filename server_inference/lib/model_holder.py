@@ -1,4 +1,5 @@
 from .imports import *
+from .misc import ExLlamaV2_helper
 
 class ModelHolder():
     def __init__(self):
@@ -27,6 +28,15 @@ class ModelHolder():
         self.current_dtype = dtype
         pretrained = sync.config['models'][model_name]['path']
 
+        if model_name in ["test"]:
+            config = ExLlamaV2Config(pretrained)
+            self.model = ExLlamaV2(config)
+            self.cache = ExLlamaV2Cache(self.model, max_seq_len = 4096, lazy = True)
+            self.model.load_autosplit(self.cache, progress = True)
+            self.tokenizer = ExLlamaV2Tokenizer(config)
+            self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
+            self.helper = ExLlamaV2_helper(sync, self.model, self.cache, self.tokenizer)
+
         if model_name in ["llama3-llava-next-8b"]:
             self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
             self.model.eval()
@@ -48,7 +58,10 @@ class ModelHolder():
             self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
             self.detokenize_helper = lambda entry_list, skip_special=False: self.model.detokenize(entry_list).decode('UTF-8')
 
-        self.model.eval()
+        try:
+            self.model.eval()
+        except:
+            print(f"could not send model {model_name} to eval mode")
             
         self.backend = sync.config['models'][model_name]['backend']
         self.template = sync.config['models'][model_name]['template']

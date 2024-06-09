@@ -31,8 +31,8 @@ def infer(manual_request = None):
 if __name__ == '__main__':
     test_mode = True
     multi_turn = False
-    models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
-    model = models[2]
+    models = ["test", "llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
+    model = models[0]
 
     if test_mode: test_models(model, test_mode, multi_turn, infer)
     else: app.run(port=10000)
