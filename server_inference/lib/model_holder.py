@@ -34,8 +34,8 @@ class ModelHolder():
             self.cache = ExLlamaV2Cache(self.model, max_seq_len = 4096, lazy = True)
             self.model.load_autosplit(self.cache, progress = True)
             self.tokenizer = ExLlamaV2Tokenizer(config)
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
             self.helper = ExLlamaV2_helper(sync, self.model, self.cache, self.tokenizer)
+            self.detokenize_helper = lambda entry_list, skip_special=False: self.helper.decode(entry_list, decode_special_tokens=skip_special)
 
         if model_name in ["llama3-llava-next-8b"]:
             self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
@@ -50,8 +50,7 @@ class ModelHolder():
             
         if model_name in ["phi-3-vision-128k-instruct"]:
             self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
-            self.processor = AutoProcessor.from_pretrained(pretrained, trust_remote_code=True) 
-            self.tokenizer = self.processor.tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=True) 
             self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
             
         if model_name in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
@@ -68,6 +67,9 @@ class ModelHolder():
         self.image_capable = sync.config['models'][model_name]['image-capable']
 
         self.detokenize = lambda entry_list, skip_special=False, split=False: [self.detokenize_helper(entry_list, skip_special=skip_special)] if not split else [self.detokenize_helper([entry], skip_special=skip_special) for entry in entry_list]
+
+        from .backends.transformers import TransformersHelper
+        self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
 
 
 

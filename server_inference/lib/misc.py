@@ -143,25 +143,27 @@ def base64_to_pil(base64_images):
 
 
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
-def find_top_indexes(sync, arr, n_top):
-    arr = np.array(arr)
+def find_top_indexes(sync, arr):
+    if arr is None:
+        return None
+    n_top = sync.dhold.inputs['max_num_beams']
+    arr = torch.tensor(arr)
     if len(arr.shape) == 2:
-        arr = np.expand_dims(arr, axis=0)
+        arr = arr.unsqueeze(0)
 
-    arr = np.array(arr)
-    nan_mask = np.isnan(arr)
-    arr[nan_mask] = -np.inf
+    nan_mask = torch.isnan(arr)
+    arr[nan_mask] = -float('inf')
 
-    softmax_arr = softmax(arr, axis=-1)
-    top_indexes = np.argsort(softmax_arr)[..., -n_top:]
+    softmax_arr = torch.softmax(arr, dim=-1)
+    top_values, top_indexes = torch.topk(softmax_arr, n_top, dim=-1)
 
-    result_probs = np.take_along_axis(softmax_arr, top_indexes, axis=-1)[..., ::-1]
-    result_indices = top_indexes[..., ::-1]
+    result_probs = top_values
+    result_indices = top_indexes
 
-    result = np.stack([result_indices, result_probs], axis=-1)
+    result = torch.stack([result_indices, result_probs], dim=-1)
 
-    if not sync.mhold.backend == "llama-cpp":
-        result = np.swapaxes(result,0,1)
+    # if not sync.mhold.backend == "llama-cpp" and not sync.mhold.backend == "exllamav2":
+    #     result = result.permute(1, 0, 2, 3)
     return result
 
 def test_models(model, test_mode, multi_turn, infer):
@@ -186,11 +188,11 @@ def test_models(model, test_mode, multi_turn, infer):
                     'debugmode': True, 
                     'images': [], 
                     'beam_config': {
-                        'use_beam_search': False, 
+                        'use_beam_search': True, 
                         'max_num_beams': '2', 
                         'depth_beams': '4', 
                         'min_conf_for_sure': '0.95', 
-                        'min_conf_for_consider': '0.02', 
+                        'min_conf_for_consider': '0.000002', 
                         'prob_sum_for_search': '0.98'
                     }
                 })
@@ -278,7 +280,7 @@ class ExLlamaV2_helper():
             tokens_decoded_merker.append(top_token_decoded)
 
         print(tokens_decoded_merker)
-        return tokens_decoded_merker, torch.concatenate(logits_merker, dim=1)
+        return tokens_decoded_merker, find_top_indexes(self.sync, torch.concatenate(logits_merker, dim=1).numpy(), n_top=self.sync.dhold.inputs['max_num_beams'])
 
     
 
@@ -301,14 +303,34 @@ class ExLlamaV2_helper():
         # position_offsets = torch.stack(position_offsets_merker)
         return tokens, position_offsets
 
-    def decode(self, inputs: torch.Tensor, decode_special_tokens=False):
+    def decode(self, inputs: torch.Tensor, decode_special_tokens=False, logits_separate=False):
+        print(inputs, type(inputs))
+        if isinstance(inputs, list):
+            inputs = torch.tensor(inputs)
+        if isinstance(inputs, np.ndarray):
+            inputs = torch.from_numpy(inputs)
         if len(inputs.shape) == 1:
             inputs = inputs.unsqueeze(0)
         assert (len(inputs.shape) == 2 or len(inputs.shape) == 1), f"inputs for decode should be 1D or 2D tensor, got: {inputs.shape}"
 
         decoded_strings = []
+        print(inputs, type(inputs))
+        print("inputs shape:", inputs.shape)
         for entry in inputs:
-            decoded_strings.append(self.tokenizer.decode(entry, decode_special_tokens=decode_special_tokens))
+            if logits_separate:
+                decoded_strings.append([])
+                for sample in entry:
+                    decoded = self.tokenizer.decode(torch.tensor([sample]), decode_special_tokens=decode_special_tokens)
+                    print(type(decoded), decoded)
+                    decoded_strings[-1].append(decoded)
+            else:
+                decoded = self.tokenizer.decode(entry, decode_special_tokens=decode_special_tokens)
+                print(type(decoded), decoded)
+                decoded_strings.append(decoded)
+
+        print("decoded strings:", decoded_strings)
+        if logits_separate: 
+            decoded_strings = decoded_strings[0]
         return decoded_strings
 
 
