@@ -312,6 +312,13 @@ class ProcessorHelper():
             sync.dhold.logits = generation_dict['top_logits']
 
             sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
+            if "stopped" in generation_dict:
+                sync.dhold.stopped = generation_dict['stopped']
+
+            print(f"after gen: stopped: {sync.dhold.stopped}, top_logits: {sync.dhold.logits}")
+            if sync.dhold.logits.shape[0] == 1 and sync.dhold.stopped[0]:
+                sync.dhold.beamsearch_break = True
+                print("beam search stopped since only beam contains stop")
 
             return None
 
@@ -389,6 +396,7 @@ class ProcessorHelper():
         min_conf_for_consider to 
         sync.dhold.considered_tokens_num
         """
+        print("sync.dhold.logits shape:", sync.dhold.logits.shape)
         
         # get number of considered tokens for each batch
         merker = [1 for _ in range(sync.dhold.logits.shape[0])] #  add the first one by default

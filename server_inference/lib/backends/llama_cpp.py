@@ -94,6 +94,7 @@ class LlamacppHelper(BaseHelper):
 
         # print("out_merker:")
         # show_dict_compact(out_merker)
+
         # print("text_offset:", out_merker[0]['choices'][0]['logprobs']['text_offset'])
         # print(out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0])
         # print("top_logprobs:", [f"{key}: {out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0][key]}" for index, key in enumerate(out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0]) if index < 10])
@@ -106,16 +107,27 @@ class LlamacppHelper(BaseHelper):
 
         top_logits = torch.tensor([[[[self.encode(key)[0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker])
 
+        if top_logits.ndim < 4:
+            for i in range(4 - top_logits.ndim):
+                top_logits = top_logits.unsqueeze(-1)
+
         
         print("top_logits:", top_logits)
-        
+
+        stopped = []
+        for out in out_merker:
+            if out['choices'][0]['finish_reason'] == "stop":
+                stopped.append(True)
+            else:
+                stopped.append(False)
 
         
         output = GenerateOutputDict(
             decoded_output = decoded,
             output_shape = output_shape,
             logits = None,
-            top_logits = top_logits
+            top_logits = top_logits,
+            stopped = stopped
         )
 
         print("output GenerateOutputDict:")

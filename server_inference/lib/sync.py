@@ -73,6 +73,7 @@ class Sync():
         self.phelp.inference_check_stop_token_and_alternative_inputs(self)
 
         self.phelp.inference_do_inference(self)
+
         if self.dhold.inputs['beam_config']['use_beam_search']:
             self.phelp.inference_get_considered_tokens_num(self)
 
@@ -101,6 +102,8 @@ class Sync():
                 while self.dhold.generated_tokens < self.dhold.inputs['max_new_tokens']:
                     # generate limit 1 token
                     self.do_inference(limit_tokens=1)
+                    if hasattr(self.dhold, "beamsearch_break") and self.dhold.beamsearch_break:
+                        break
     
                     self.phelp.beamsearch_do_search(self)
                     self.dhold.generated_tokens += len(self.dhold.tokens_to_add)
