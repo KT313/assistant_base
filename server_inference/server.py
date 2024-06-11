@@ -13,6 +13,9 @@ def infer_helper(request_json):
             else: sync.generate()
             
             make_output_dict_str(sync, show_info=False)
+            print("\nfinal output:")
+            for key, val in json.loads(sync.dhold.output_dict).items():
+                print(" |", f"{key}: {val}")
             return sync.dhold.output_dict
     
 

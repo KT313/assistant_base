@@ -12,6 +12,16 @@ class Sync():
         self.config = config
 
     def prep_gen_inputs(self):
+        """
+        prepares sync for a generation run, has to be used 
+        at the beginning no matter which mode.
+
+        loads model
+        loads beam config
+        builds prompt string
+        sets generation args based on model
+        """
+        
         args = self.dhold.inputs
         self.dhold.gen_inputs = args
 
@@ -23,6 +33,13 @@ class Sync():
         
 
     def get_best_path(self):
+        """
+        gets the best path by conducting a beam search:
+        sets up beam search inputs
+        does inference
+        gets beams from generation outputs
+        gets best beam from beams
+        """
 
         args = self.dhold.gen_inputs
         self.phelp.beamsearch_setup_inputs(self)
@@ -33,6 +50,15 @@ class Sync():
 
 
     def do_inference(self, limit_tokens=None, alternative_input=None, alternative_mask=None, sequencial_batch=False):
+        """
+        does inference with the information saved in sync.dhold:
+        checks for error and token limit
+        sets up generation arguments
+        makes sure stop token is set and checks for alternative inputs
+        runs generation
+        if beam search: gets number of considered tokens
+        """
+        
         self.dhold.start_time_inference = time.time()
         self.dhold.limit_tokens = limit_tokens
         self.dhold.alternative_input = alternative_input
@@ -56,6 +82,10 @@ class Sync():
 
     # sets dhold.returned_content, dhold.output_shape, self.dhold.logits (and maybe dhold.input_shape)
     def generate(self):
+        """
+        main function for all types of generation
+        """
+        
         gc.collect()
         torch.cuda.empty_cache()
         self.prep_gen_inputs()
@@ -88,6 +118,10 @@ class Sync():
 
 
     def solve_agent_task(self):
+        """
+        splits task into several steps to process with agents
+        """
+        
         base_instruction = "You are part of a network of agents where each agent has its own task, in order to handle complex queries. Your task is to "
         self.phelp.build_task(
             self, 

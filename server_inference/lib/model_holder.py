@@ -8,6 +8,10 @@ class ModelHolder():
         self.preprocessor_type = ""
 
     def load_model(self, sync, model_name, dtype):
+        """
+        loads a model using the provided information in sync.dhold.inputs['model'] and stores it and its components (tokenizer and maybe image_processor) in sync.mhold
+        """
+        
         try:
             del self.model
         except:

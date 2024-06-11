@@ -192,7 +192,7 @@ def test_models(model, test_mode, multi_turn, infer):
                         'max_num_beams': '2', 
                         'depth_beams': '4', 
                         'min_conf_for_sure': '0.95', 
-                        'min_conf_for_consider': '0.000002', 
+                        'min_conf_for_consider': '0.02', 
                         'prob_sum_for_search': '0.98'
                     }
                 })
@@ -263,23 +263,16 @@ class ExLlamaV2_helper():
                 indexed_embeddings = None
             ).float().cpu()
     
-            print("logits before softmax:", logits[0, 0, :20])
             logits = torch.softmax(logits, dim=-1)
-            print("sum after softmax (should be 1):", torch.sum(logits))
             logits_merker.append(logits)
             top_token = find_top_indexes(self.sync, logits.numpy(), n_top=1)[0, 0, 0, 0]
-            print(tokens.shape)
             tokens = torch.concatenate([tokens, torch.tensor([top_token.astype(np.int32)]).to(self.sync.config['torch_device']).unsqueeze(0)], dim=-1)
-            print(tokens.shape)
             top_token_decoded = self.sync.mhold.helper.decode(torch.tensor([top_token.astype(np.int32)]), decode_special_tokens=True)[0]
-            print(f"top token output: {top_token_decoded}")
             
-            print(torch.tensor([top_token.astype(np.int32)]), self.sync.mhold.stop_token)
             if torch.tensor([top_token.astype(np.int32)]) in self.sync.mhold.stop_token: 
                 break
             tokens_decoded_merker.append(top_token_decoded)
 
-        print(tokens_decoded_merker)
         return tokens_decoded_merker, find_top_indexes(self.sync, torch.concatenate(logits_merker, dim=1).numpy(), n_top=self.sync.dhold.inputs['max_num_beams'])
 
     
@@ -304,7 +297,6 @@ class ExLlamaV2_helper():
         return tokens, position_offsets
 
     def decode(self, inputs: torch.Tensor, decode_special_tokens=False, logits_separate=False):
-        print(inputs, type(inputs))
         if isinstance(inputs, list):
             inputs = torch.tensor(inputs)
         if isinstance(inputs, np.ndarray):
@@ -314,21 +306,16 @@ class ExLlamaV2_helper():
         assert (len(inputs.shape) == 2 or len(inputs.shape) == 1), f"inputs for decode should be 1D or 2D tensor, got: {inputs.shape}"
 
         decoded_strings = []
-        print(inputs, type(inputs))
-        print("inputs shape:", inputs.shape)
         for entry in inputs:
             if logits_separate:
                 decoded_strings.append([])
                 for sample in entry:
                     decoded = self.tokenizer.decode(torch.tensor([sample]), decode_special_tokens=decode_special_tokens)
-                    print(type(decoded), decoded)
                     decoded_strings[-1].append(decoded)
             else:
                 decoded = self.tokenizer.decode(entry, decode_special_tokens=decode_special_tokens)
-                print(type(decoded), decoded)
                 decoded_strings.append(decoded)
 
-        print("decoded strings:", decoded_strings)
         if logits_separate: 
             decoded_strings = decoded_strings[0]
         return decoded_strings

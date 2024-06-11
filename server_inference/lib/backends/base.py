@@ -33,7 +33,7 @@ class GenerateOutputDict(TypedDict):
 class BaseHelper(ABC):
     
     @abstractmethod
-    def __init__(self, pretrained_path: str, mode: str = "default"):
+    def __init__(self, sync, model=None, tokenizer=None, image_processor=None, path_to_model=None):
         pass
         
     @abstractmethod
