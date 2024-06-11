@@ -305,6 +305,7 @@ class ExLlamaV2_helper():
             inputs = inputs.unsqueeze(0)
         assert (len(inputs.shape) == 2 or len(inputs.shape) == 1), f"inputs for decode should be 1D or 2D tensor, got: {inputs.shape}"
 
+
         decoded_strings = []
         for entry in inputs:
             if logits_separate:
@@ -321,7 +322,36 @@ class ExLlamaV2_helper():
         return decoded_strings
 
 
+def show_dict_compact(dict_input, indent=0):
+    indentation = "   "*indent
+    if isinstance(dict_input, list):
+        if len(dict_input) <= 20:
+            for entry in dict_input:
+                if isinstance(entry, dict) or isinstance(entry, list):
+                    show_dict_compact(entry, indent=indent+1)
+                elif isinstance(entry, torch.Tensor) or isinstance(entry, np.ndarray):
+                    print(indentation, type(entry), entry.shape)
+                else:
+                    print(indentation, type(entry))
+        else:
+            print(indentation, type(dict_input), f"len: {len(dict_input)}")
 
+    elif isinstance(dict_input, dict):
+        if len(dict_input) <= 20:
+            for key, val in dict_input.items():
+                if isinstance(val, dict) or isinstance(val, list):
+                    print(indentation, f"{key}:")
+                    show_dict_compact(val, indent=indent+1)
+                elif isinstance(val, torch.Tensor) or isinstance(val, np.ndarray):
+                    print(indentation, key, type(val), val.shape)
+                else:
+                    print(indentation, key, type(val))
+        else:
+            print(indentation, type(dict_input), f"len: {len(dict_input)}")
+    else:
+        print(f"Error: input is neither dict nor list, got: {type(dict_input)}")
+        
+            
 
 
 

@@ -80,7 +80,12 @@ class ModelHolder():
         self.detokenize = lambda entry_list, skip_special=False, split=False: [self.detokenize_helper(entry_list, skip_special=skip_special)] if not split else [self.detokenize_helper([entry], skip_special=skip_special) for entry in entry_list]
 
         from .backends.transformers import TransformersHelper
-        self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
+        from .backends.llama_cpp import LlamacppHelper
+
+        if self.backend == "transformers":
+            self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
+        elif self.backend == "llama-cpp":
+            self.helper = LlamacppHelper(sync=sync, model=self.model)
 
 
 
