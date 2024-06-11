@@ -42,10 +42,17 @@ class ModelHolder():
             self.detokenize_helper = lambda entry_list, skip_special=False: self.helper.decode(entry_list, decode_special_tokens=skip_special)
 
         if model_name in ["llama3-llava-next-8b"]:
+
+            
             self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
             self.model.eval()
             self.model.tie_weights()
             self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
+
+
+
+
+        
             
         if model_name in ["Hermes-2-Theta-Llama-3-8B"]:
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')

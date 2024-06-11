@@ -5,6 +5,11 @@ class TransformersHelper(BaseHelper):
 
     def __init__(self, sync, model=None, tokenizer=None, image_processor=None, path_to_model=None):
         assert ((model!=None and tokenizer!=None) or path_to_model!=None), f"must provide either loaded model and tokenizer or path to model files, got: model={model}, tokenizer={tokenizer}, path_to_model={path_to_model}"
+        """
+        if model and tokenizer provided starts in already loaded mode,
+        otherwise uses path_to_model to load the model and tokenizer
+        """
+        
         self.sync = sync
         self.model = model
         self.tokenizer = tokenizer
@@ -15,8 +20,9 @@ class TransformersHelper(BaseHelper):
         """
         encoded strings to tokens
         
-        input: string or list of strings
-        output: EncodeOutputDict containing 2D tensor of (batch, tokens) and mask for it
+        input:  string or list of strings
+        output: EncodeOutputDict containing 
+                2D tensor of (batch, tokens) and mask for it
         """
         
         encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
@@ -41,8 +47,10 @@ class TransformersHelper(BaseHelper):
             decoded = [self.tokenizer.batch_decode(entry, skip_special_tokens=skip_special_tokens) for entry in inputs]
         else:
             decoded = [self.tokenizer.batch_decode(inputs, skip_special_tokens=skip_special_tokens)]
+        
         if logits_mode:
             decoded = decoded[0]
+
         return decoded
         
     
@@ -50,14 +58,22 @@ class TransformersHelper(BaseHelper):
         """
         generates text using the LLM model
 
-        input: 2D tensor containing tokens, kwargs for generation settings
-        output: GenerateOutputDict containing decoded output string, output shape and top_logits
+        input:  2D tensor containing tokens, kwargs 
+                for generation settings
+        output: GenerateOutputDict containing 
+                decoded output string, output shape 
+                and top_logits
         """
         
         out = self.model.generate(inputs, **kwargs)
 
         input_sequence_length = inputs.shape[-1]
+        # llama-llava does for some reason not return the output with input and i did not find a way to check the amount of actually new generated tokens, so for now this should at least work. TODO: find cleaner solution than only for this specific model
+        if self.sync.mhold.current_model in ["llama3-llava-next-8b"]:
+            input_sequence_length = 0
+        
         decoded = self.decode(out.sequences[:, input_sequence_length:], skip_special_tokens=True)
+
         output_shape = out.sequences.shape
         merker_scores = []
         if out.scores != None:

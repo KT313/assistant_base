@@ -107,7 +107,7 @@ class ProcessorHelper():
             sync.dhold.inputs['image_sizes'] = [image.size for image in sync.dhold.inputs['images']]
             sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape #, sync.dhold.inputs['image_tensor'][0].shape] TODO: find out image token size
         elif sync.mhold.current_model in ["phi-3-vision-128k-instruct"]:
-            tokenizer_output = sync.mhold.processor(sync.dhold.prompt_string, image_input, return_tensors="pt").to(sync.config['torch_device'])
+            tokenizer_output = sync.mhold.tokenizer(sync.dhold.prompt_string, image_input, return_tensors="pt").to(sync.config['torch_device'])
             sync.dhold.inputs['tokens'] = tokenizer_output.input_ids
             sync.dhold.inputs['pixel_values'] = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None
             sync.dhold.inputs['image_sizes'] = tokenizer_output.image_sizes if "image_sizes" in tokenizer_output else None
@@ -176,7 +176,7 @@ class ProcessorHelper():
                     
     
                 print("\n")
-                print(f"current generation: {''.join(sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, logits_mode=True))}\x1b[32m{''.join(sync.mhold.helper.decode(sync.dhold.tokens_to_add, skip_special_tokens=False, logits_mode=True))}\x1b[0m \x1b[37m{''.join(sync.mhold.helper.decode(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:], skip_special_tokens=False, logits_mode=True))}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+                print(f"current generation: {''.join(sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, logits_mode=False)[0])}\x1b[32m{''.join(sync.mhold.helper.decode(sync.dhold.tokens_to_add, skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m \x1b[37m{''.join(sync.mhold.helper.decode(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:], skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m") # \[90m or \[37m for gray \x1b[43
             print("\n---------------------------------------------------------------\n\n")
 
     
