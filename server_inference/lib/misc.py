@@ -143,7 +143,7 @@ def base64_to_pil(base64_images):
 
 
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
-def find_top_indexes(sync, arr):
+def find_top_indexes(sync, arr, is_log_format=False):
     if arr is None:
         return None
     n_top = sync.dhold.inputs['max_num_beams']
@@ -151,10 +151,14 @@ def find_top_indexes(sync, arr):
     if len(arr.shape) == 2:
         arr = arr.unsqueeze(0)
 
-    nan_mask = torch.isnan(arr)
-    arr[nan_mask] = -float('inf')
+    if not is_log_format:
 
-    softmax_arr = torch.softmax(arr, dim=-1)
+        nan_mask = torch.isnan(arr)
+        arr[nan_mask] = -float('inf')
+    
+        softmax_arr = torch.softmax(arr, dim=-1)
+    else:
+        softmax_arr = torch.exp(arr)
     top_values, top_indexes = torch.topk(softmax_arr, n_top, dim=-1)
 
     result_probs = top_values
@@ -164,6 +168,7 @@ def find_top_indexes(sync, arr):
 
     # if not sync.mhold.backend == "llama-cpp" and not sync.mhold.backend == "exllamav2":
     #     result = result.permute(1, 0, 2, 3)
+    print("top logits result:", result)
     return result
 
 def test_models(model, test_mode, multi_turn, infer):
@@ -184,7 +189,7 @@ def test_models(model, test_mode, multi_turn, infer):
                     'allow_imagegen': False,
                     'agent_task_mode': False,
                     'model_dtype': 'bfloat16', 
-                    'max_new_tokens': '256', 
+                    'max_new_tokens': '32', 
                     'debugmode': True, 
                     'images': [], 
                     'beam_config': {

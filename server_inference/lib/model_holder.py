@@ -81,11 +81,14 @@ class ModelHolder():
 
         from .backends.transformers import TransformersHelper
         from .backends.llama_cpp import LlamacppHelper
+        from .backends.exllamav2 import Exllamav2Helper
 
         if self.backend == "transformers":
             self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
         elif self.backend == "llama-cpp":
             self.helper = LlamacppHelper(sync=sync, model=self.model)
+        elif self.backend == "exllamav2":
+            self.helper = Exllamav2Helper(sync=sync, model=self.model, tokenizer=self.tokenizer, cache=self.cache)
 
 
 

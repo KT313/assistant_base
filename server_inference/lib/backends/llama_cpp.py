@@ -32,9 +32,16 @@ class LlamacppHelper(BaseHelper):
             entry_encoded = self.model.tokenize(entry.encode('UTF-8'), special=True, add_bos = False)
             encoded_merker.append(entry_encoded)
 
-        print("encoded_merker:", encoded_merker)        
+        print("encoded_merker:", encoded_merker)     
+
+        encoded_merker = torch.tensor(encoded_merker)
+
+        output = EncodeOutputDict(
+            ids = encoded_merker,
+            mask = torch.ones_like(encoded_merker, device=self.sync.config['torch_device'])
+        )
         
-        return encoded_merker
+        return output
         
 
     def decode(self, inputs: torch.Tensor, skip_special_tokens=True, logits_mode=False) -> Union[List[str], List[List[str]]]:
@@ -79,10 +86,12 @@ class LlamacppHelper(BaseHelper):
                 and top_logits
         """
 
+        assert (inputs.ndim == 2 or inputs.ndim == 1), f"inputs need to be 1D or 2D tensor (batch, tokens), got: {inputs.shape}"
+
         # make sure inputs tensor is 2D
         if inputs.ndim == 1:
             inputs = inputs.unsqueeze(0)
-
+            
         input_length = inputs.shape[-1]
             
         # need to process batches sequentially

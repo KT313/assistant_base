@@ -123,7 +123,8 @@ class ProcessorHelper():
             sync.dhold.inputs['tokens'] = torch.tensor(sync.mhold.model.tokenize(sync.dhold.prompt_string.encode('UTF-8')), device=sync.config['torch_device'])
             sync.dhold.input_shape = [1, len(sync.dhold.inputs['tokens'])]
         elif sync.mhold.backend == "exllamav2":
-            tokenizer_output, position_offsets = sync.mhold.helper.encode(sync.dhold.prompt_string)
+            tokenizer_output = sync.mhold.helper.encode(sync.dhold.prompt_string)
+            tokenizer_output, position_offsets = tokenizer_output['ids'], tokenizer_output['position_offsets']
             tokenizer_output = tokenizer_output.to(sync.config['torch_device'])
             
             sync.dhold.inputs['tokens'] = tokenizer_output
@@ -131,6 +132,8 @@ class ProcessorHelper():
             sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
 
         sync.dhold.original_input_len = sync.dhold.inputs['tokens'].shape[-1]
+
+        
 
         
 
@@ -158,26 +161,29 @@ class ProcessorHelper():
         """
         
         if sync.dhold.inputs['debugmode']:
+            """
             if sync.mhold.backend == "exllamav2":
                 print(" | ".join([str(torch.round(entry, decimals=5)).ljust(14) for entry in sync.dhold.logits_merker[0, 0, :, 1]]))
                 print("\n\na:", sync.mhold.helper.decode(sync.dhold.logits_merker[0, 0, :, 0].to(torch.int32), logits_separate=True))
                 print(" | ".join([entry.strip().ljust(14) for entry in sync.mhold.helper.decode(sync.dhold.logits_merker[0, 0, :, 0].to(torch.int32), logits_separate=True)]))
                 if torch.any(torch.tensor(sync.dhold.considered_tokens_num_merker == 1)): print("-> single considered token, not doing beam search")
                 else: print(f"-> using {sync.dhold.considered_tokens_num_merker} beams")
+            
                     
     
                 print("\n")
                 print(f"current generation: {''.join(sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)]))}\x1b[32m{''.join(sync.mhold.helper.decode(sync.dhold.tokens_to_add))}\x1b[0m \x1b[37m{''.join(sync.mhold.helper.decode(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:]))}\x1b[0m") # \[90m or \[37m for gray \x1b[43
             else:
-                print(" | ".join([str(round(entry.item(), 5)).ljust(14) for entry in sync.dhold.logits_merker[0, 0, :, 1]]))
-                print(" | ".join([entry.strip().ljust(14) for entry in sync.mhold.helper.decode(sync.dhold.logits_merker[0, 0, :, 0].to(torch.int32), logits_mode=True)]))
-                if torch.any(torch.tensor(sync.dhold.considered_tokens_num_merker == 1)): print("-> single considered token, not doing beam search")
-                else: print(f"-> using {sync.dhold.considered_tokens_num_merker} beams")
-                    
-    
-                print("\n")
-                print(f"current generation: {''.join(sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, logits_mode=False)[0])}\x1b[32m{''.join(sync.mhold.helper.decode(sync.dhold.tokens_to_add, skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m \x1b[37m{''.join(sync.mhold.helper.decode(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:], skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m") # \[90m or \[37m for gray \x1b[43
-            print("\n---------------------------------------------------------------\n\n")
+            """
+            print(" | ".join([str(round(entry.item(), 5)).ljust(14) for entry in sync.dhold.logits_merker[0, 0, :, 1]]))
+            print(" | ".join([entry.strip().ljust(14) for entry in sync.mhold.helper.decode(sync.dhold.logits_merker[0, 0, :, 0].to(torch.int32), logits_mode=True)]))
+            if torch.any(torch.tensor(sync.dhold.considered_tokens_num_merker == 1)): print("-> single considered token, not doing beam search")
+            else: print(f"-> using {sync.dhold.considered_tokens_num_merker} beams")
+                
+
+            print("\n")
+            print(f"current generation: {''.join(sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0][sync.dhold.original_input_len:-len(sync.dhold.tokens_to_add)], skip_special_tokens=False, logits_mode=False)[0])}\x1b[32m{''.join(sync.mhold.helper.decode(sync.dhold.tokens_to_add, skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m \x1b[37m{''.join(sync.mhold.helper.decode(sync.dhold.best_beam_indices[1+sync.dhold.additional_sure_tokens:], skip_special_tokens=False, logits_mode=False)[0])}\x1b[0m") # \[90m or \[37m for gray \x1b[43
+        print("\n---------------------------------------------------------------\n\n")
 
     
 
@@ -208,6 +214,10 @@ class ProcessorHelper():
         
 
         if sync.dhold.inputs['model'] in ["test"]:
+            sync.dhold.gen_input = sync.dhold.inputs['tokens'].to(torch.int32)
+            sync.dhold.gen_kwargs.update({
+                'position_offsets': sync.dhold.inputs['position_offsets']
+            })
             pass
 
 
@@ -280,7 +290,7 @@ class ProcessorHelper():
             sync.mhold.stop_token.append(sync.mhold.tokenizer("<|eot_id|>").input_ids[0])
         if sync.mhold.backend == "exllamav2":
             sync.mhold.stop_token = [sync.mhold.stop_token] if sync.mhold.stop_token != None else []
-            sync.mhold.stop_token.append(sync.mhold.helper.encode("<|eot_id|>")[0][0])
+            sync.mhold.stop_token.append(sync.mhold.helper.encode("<|eot_id|>")['ids'][0][0])
     
     def inference_check_stop_token_and_alternative_inputs(self, sync):
         """
@@ -440,6 +450,8 @@ class ProcessorHelper():
         sync.dhold.considered_tokens_num_merker = copy.deepcopy(sync.dhold.considered_tokens_num)
         
         tokens = sync.dhold.inputs['tokens']
+
+        print("will set inputs now")
             
         sync.dhold.batched_input_tokens = torch.concatenate((tokens.repeat(sync.dhold.considered_tokens_num[0], 1), torch.tensor(sync.dhold.logits[0, 0, :sync.dhold.considered_tokens_num[0], 0], device=sync.config['torch_device']).unsqueeze(1)), dim=-1).to(torch.int)
     def beamsearch_do_inference(self, sync):

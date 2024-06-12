@@ -26,6 +26,7 @@ class TransformersHelper(BaseHelper):
         """
         
         encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
+        
         output = EncodeOutputDict(
             ids = encoded_ids,
             mask = torch.ones_like(encoded_ids, device=self.sync.config['torch_device'])
@@ -64,6 +65,12 @@ class TransformersHelper(BaseHelper):
                 decoded output string, output shape 
                 and top_logits
         """
+
+        assert (inputs.ndim == 2 or inputs.ndim == 1), f"inputs need to be 1D or 2D tensor (batch, tokens), got: {inputs.shape}"
+
+        # make sure inputs tensor is 2D
+        if inputs.ndim == 1:
+            inputs = inputs.unsqueeze(0)
         
         out = self.model.generate(inputs, **kwargs)
 
