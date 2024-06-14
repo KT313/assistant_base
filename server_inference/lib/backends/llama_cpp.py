@@ -13,6 +13,8 @@ class LlamacppHelper(BaseHelper):
         self.sync = sync
         self.model = model
         self.path_to_model = path_to_model
+
+        self.stop_token = torch.tensor(self.encode("<|eot_id|>", encode_special_tokens=True)['ids'], device=self.sync.config['torch_device'])
         
     def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True) -> EncodeOutputDict:
         """
@@ -23,18 +25,19 @@ class LlamacppHelper(BaseHelper):
                 2D tensor of (batch, tokens) and mask for it
         """
 
-        print(f"encoder input: {inputs}")
         if isinstance(inputs, str):
             inputs = [inputs]
 
         encoded_merker = []
         for entry in inputs:
             entry_encoded = self.model.tokenize(entry.encode('UTF-8'), special=True, add_bos = False)
+            if entry_encoded == []:
+                entry_encoded = [self.stop_token]
             encoded_merker.append(entry_encoded)
 
-        print("encoded_merker:", encoded_merker)     
 
         encoded_merker = torch.tensor(encoded_merker)
+        
 
         output = EncodeOutputDict(
             ids = encoded_merker,
@@ -52,7 +55,6 @@ class LlamacppHelper(BaseHelper):
         output: 2D list of strings
         """
 
-        print(f"decoder input: {inputs}")
         if inputs.ndim == 1:
             inputs = inputs.unsqueeze(0)
 
@@ -68,8 +70,6 @@ class LlamacppHelper(BaseHelper):
 
         if logits_mode:
             decoded_merker = decoded_merker[0]
-
-        print("decoded_merker:", decoded_merker)
         
 
         return decoded_merker
@@ -96,17 +96,12 @@ class LlamacppHelper(BaseHelper):
             
         # need to process batches sequentially
         out_merker = []
-        # print("inputs:", inputs)
+
         for entry in inputs:
             entry_out = self.model(entry.tolist(), **kwargs)
             out_merker.append(entry_out)
 
-        # print("out_merker:")
-        # show_dict_compact(out_merker)
 
-        # print("text_offset:", out_merker[0]['choices'][0]['logprobs']['text_offset'])
-        # print(out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0])
-        # print("top_logprobs:", [f"{key}: {out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0][key]}" for index, key in enumerate(out_merker[0]['choices'][0]['logprobs']['top_logprobs'][0]) if index < 10])
 
         decoded = []
         for entry in out_merker:
@@ -114,18 +109,23 @@ class LlamacppHelper(BaseHelper):
 
         output_shape = [len(out_merker), len(out_merker[0]['choices'][0]['logprobs']['top_logprobs'])]
 
-        top_logits = torch.tensor([[[[self.encode(key)[0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker])
+            
+        top_logits = torch.tensor([[[[self.encode(key)['ids'][0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker]).to(self.sync.config['torch_device'])
+
+        
 
         if top_logits.ndim < 4:
             for i in range(4 - top_logits.ndim):
                 top_logits = top_logits.unsqueeze(-1)
 
+        # logits output from llama-cpp are already in log format, transfer them back to probs
+        top_logits[:, :, :, 1] = torch.exp(top_logits[:, :, :, 1])
+
         
-        print("top_logits:", top_logits)
 
         stopped = []
-        for out in out_merker:
-            if out['choices'][0]['finish_reason'] == "stop":
+        for index, out in enumerate(out_merker):
+            if out['choices'][0]['finish_reason'] == "stop" or self.stop_token in top_logits[index, :, :, 0]:
                 stopped.append(True)
             else:
                 stopped.append(False)
@@ -138,8 +138,5 @@ class LlamacppHelper(BaseHelper):
             top_logits = top_logits,
             stopped = stopped
         )
-
-        print("output GenerateOutputDict:")
-        show_dict_compact(output)
         
         return output

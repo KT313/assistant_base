@@ -15,6 +15,8 @@ class TransformersHelper(BaseHelper):
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.path_to_model = path_to_model
+
+        self.stop_token = torch.tensor([self.tokenizer.eos_token_id], device=self.sync.config['torch_device'])
         
     def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True) -> EncodeOutputDict:
         """
@@ -71,6 +73,7 @@ class TransformersHelper(BaseHelper):
         # make sure inputs tensor is 2D
         if inputs.ndim == 1:
             inputs = inputs.unsqueeze(0)
+        
         
         out = self.model.generate(inputs, **kwargs)
 

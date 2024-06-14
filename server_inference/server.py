@@ -32,10 +32,11 @@ def infer(manual_request = None):
         return infer_helper(request.get_json())
 
 if __name__ == '__main__':
-    test_mode = True
+    test_mode = False
     multi_turn = False
     models = ["test", "llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
-    model = models[0]
+    models_a = ["Hermes-2-Theta-Llama-3-8B", "Meta-Llama-3-70B-Instruct-IQ1_M", "test"]
+    model = models_a[2]
 
     if test_mode: test_models(model, test_mode, multi_turn, infer)
     else: app.run(port=10000)

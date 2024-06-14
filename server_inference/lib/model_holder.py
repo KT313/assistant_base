@@ -1,5 +1,8 @@
 from .imports import *
-from .misc import ExLlamaV2_helper
+
+from .backends.transformers import TransformersHelper
+from .backends.llama_cpp import LlamacppHelper
+from .backends.exllamav2 import Exllamav2Helper
 
 class ModelHolder():
     def __init__(self):
@@ -38,8 +41,6 @@ class ModelHolder():
             self.cache = ExLlamaV2Cache(self.model, max_seq_len = 4096, lazy = True)
             self.model.load_autosplit(self.cache, progress = True)
             self.tokenizer = ExLlamaV2Tokenizer(config)
-            self.helper = ExLlamaV2_helper(sync, self.model, self.cache, self.tokenizer)
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.helper.decode(entry_list, decode_special_tokens=skip_special)
 
         if model_name in ["llama3-llava-next-8b"]:
 
@@ -47,26 +48,18 @@ class ModelHolder():
             self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
             self.model.eval()
             self.model.tie_weights()
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
-
-
-
-
-        
+            
             
         if model_name in ["Hermes-2-Theta-Llama-3-8B"]:
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
             self.model = LlamaForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, attn_implementation="flash_attention_2")
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
             
         if model_name in ["phi-3-vision-128k-instruct"]:
             self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=True) 
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.tokenizer.decode(entry_list, skip_special_tokens=skip_special)
             
         if model_name in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
             self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
-            self.detokenize_helper = lambda entry_list, skip_special=False: self.model.detokenize(entry_list).decode('UTF-8')
 
         try:
             self.model.eval()
@@ -77,11 +70,6 @@ class ModelHolder():
         self.template = sync.config['models'][model_name]['template']
         self.image_capable = sync.config['models'][model_name]['image-capable']
 
-        self.detokenize = lambda entry_list, skip_special=False, split=False: [self.detokenize_helper(entry_list, skip_special=skip_special)] if not split else [self.detokenize_helper([entry], skip_special=skip_special) for entry in entry_list]
-
-        from .backends.transformers import TransformersHelper
-        from .backends.llama_cpp import LlamacppHelper
-        from .backends.exllamav2 import Exllamav2Helper
 
         if self.backend == "transformers":
             self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
@@ -89,7 +77,3 @@ class ModelHolder():
             self.helper = LlamacppHelper(sync=sync, model=self.model)
         elif self.backend == "exllamav2":
             self.helper = Exllamav2Helper(sync=sync, model=self.model, tokenizer=self.tokenizer, cache=self.cache)
-
-
-
-        return None

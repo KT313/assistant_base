@@ -166,9 +166,6 @@ def find_top_indexes(sync, arr, is_log_format=False):
 
     result = torch.stack([result_indices, result_probs], dim=-1)
 
-    # if not sync.mhold.backend == "llama-cpp" and not sync.mhold.backend == "exllamav2":
-    #     result = result.permute(1, 0, 2, 3)
-    print("top logits result:", result)
     return result
 
 def test_models(model, test_mode, multi_turn, infer):
@@ -189,11 +186,11 @@ def test_models(model, test_mode, multi_turn, infer):
                     'allow_imagegen': False,
                     'agent_task_mode': False,
                     'model_dtype': 'bfloat16', 
-                    'max_new_tokens': '32', 
+                    'max_new_tokens': '64', 
                     'debugmode': True, 
                     'images': [], 
                     'beam_config': {
-                        'use_beam_search': True, 
+                        'use_beam_search': False, 
                         'max_num_beams': '2', 
                         'depth_beams': '4', 
                         'min_conf_for_sure': '0.95', 
@@ -202,129 +199,7 @@ def test_models(model, test_mode, multi_turn, infer):
                     }
                 })
 
-class ExLlamaV2_helper():
-    def __init__(self, sync, model, cache, tokenizer):
-        self.model = model
-        self.cache = cache
-        self.tokenizer = tokenizer
-        self.sequence_ids = None
-        self.abort_event = None
-        self.sync = sync
 
-    def _gen_begin_base(self,
-                        input_ids: torch.Tensor,
-                        mask: torch.Tensor | None = None,
-                        loras = None,
-                        position_offsets: torch.Tensor | None = None,
-                        input_embeddings: torch.Tensor | None = None):
-
-        self.cache.current_seq_len = 0
-        self.sequence_ids = input_ids
-
-        self.model.forward(input_ids[:, :-1],
-                           self.cache,
-                           input_mask = mask,
-                           preprocess_only = True,
-                           loras = loras,
-                           position_offsets = position_offsets,
-                           abort_event = self.abort_event,
-                           indexed_embeddings = input_embeddings)
-        if self.abort_event and self.abort_event.is_set():
-            self.sequence_ids = self.sequence_ids[:, :self.cache.current_seq_len + 1]
-
-    def generate(self, tokens: torch.Tensor, position_offsets, num_tokens):
-        assert len(tokens.shape) == 2, f"tokens need to be 2D tensor (batch_dim, tokens), got: {tokens.shape}"
-        stop_token = self.tokenizer.eos_token_id
-        random.seed(0)
-        batch_size = tokens.shape[0]
-        loras = None
-
-        logits_merker = []
-        tokens_decoded_merker = []
-        
-        for i in range(num_tokens):
-
-            # Truncate prompt if generation would cause cache overflow
-            overflow = tokens.shape[-1] + num_tokens - self.model.config.max_seq_len
-            if overflow > 0: tokens = tokens[:, overflow:]
-            else: overflow = 0
-    
-            mask = self.tokenizer.padding_mask(tokens) if batch_size > 1 else None
-            first_token = tokens.shape[-1]
-    
-            self._gen_begin_base(tokens,
-                                 mask,
-                                 loras,
-                                 position_offsets = position_offsets,
-                                 input_embeddings = None)
-
-        
-            logits = self.model.forward(
-                self.sequence_ids[:, -1:],
-                self.cache,
-                input_mask = mask,
-                loras = loras,
-                position_offsets = position_offsets,
-                indexed_embeddings = None
-            ).float().cpu()
-    
-            logits = torch.softmax(logits, dim=-1)
-            logits_merker.append(logits)
-            top_token = find_top_indexes(self.sync, logits.numpy(), n_top=1)[0, 0, 0, 0]
-            tokens = torch.concatenate([tokens, torch.tensor([top_token.astype(np.int32)]).to(self.sync.config['torch_device']).unsqueeze(0)], dim=-1)
-            top_token_decoded = self.sync.mhold.helper.decode(torch.tensor([top_token.astype(np.int32)]), decode_special_tokens=True)[0]
-            
-            if torch.tensor([top_token.astype(np.int32)]) in self.sync.mhold.stop_token: 
-                break
-            tokens_decoded_merker.append(top_token_decoded)
-
-        return tokens_decoded_merker, find_top_indexes(self.sync, torch.concatenate(logits_merker, dim=1).numpy(), n_top=self.sync.dhold.inputs['max_num_beams'])
-
-    
-
-    def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True):
-        if isinstance(inputs, str):
-            inputs = [inputs]
-
-        # ids_merker = []
-        # position_offsets_merker = []
-        # for entry in inputs:
-        tokens, position_offsets = self.tokenizer.encode(
-            inputs,
-            encode_special_tokens = encode_special_tokens,
-            return_offsets = True,
-            add_bos = False)
-        # ids_merker.append(ids)
-        # position_offsets_merker.append(position_offsets)
-
-        # tokens = torch.stack(ids_merker)
-        # position_offsets = torch.stack(position_offsets_merker)
-        return tokens, position_offsets
-
-    def decode(self, inputs: torch.Tensor, decode_special_tokens=False, logits_separate=False):
-        if isinstance(inputs, list):
-            inputs = torch.tensor(inputs)
-        if isinstance(inputs, np.ndarray):
-            inputs = torch.from_numpy(inputs)
-        if len(inputs.shape) == 1:
-            inputs = inputs.unsqueeze(0)
-        assert (len(inputs.shape) == 2 or len(inputs.shape) == 1), f"inputs for decode should be 1D or 2D tensor, got: {inputs.shape}"
-
-
-        decoded_strings = []
-        for entry in inputs:
-            if logits_separate:
-                decoded_strings.append([])
-                for sample in entry:
-                    decoded = self.tokenizer.decode(torch.tensor([sample]), decode_special_tokens=decode_special_tokens)
-                    decoded_strings[-1].append(decoded)
-            else:
-                decoded = self.tokenizer.decode(entry, decode_special_tokens=decode_special_tokens)
-                decoded_strings.append(decoded)
-
-        if logits_separate: 
-            decoded_strings = decoded_strings[0]
-        return decoded_strings
 
 
 def show_dict_compact(dict_input, indent=0):

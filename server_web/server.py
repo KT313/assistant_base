@@ -27,7 +27,7 @@ def send_user_msg_helper(request_json):
     if response.json()['status'] == "error":
         print(response.json()['error-info'])
         return json.dumps(response.json())
-    ai_reply = response.json()['returned_content']
+    ai_reply = response.json()['returned_content'][0]
     info = response.json()['info']
     
     returned_content = [
