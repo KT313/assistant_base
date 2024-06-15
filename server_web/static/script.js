@@ -1,4 +1,21 @@
+function getApiKeyFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('api_key');
+}
+
+
 document.addEventListener('DOMContentLoaded', function() {
+    const apiKey = getApiKeyFromUrl();
+    document.apiKey = apiKey;
+    if (document.apiKey) {
+        console.log('API Key:', document.apiKey);
+        // Use the API key for further operations
+        // Example: make an API call
+        // fetch(`http://example.com/api?api_key=${apiKey}`)
+    } else {
+        console.error('API key not found in the URL');
+    }
+    //console.log("document.api_key:", document.api_key);
     const tabs = document.querySelectorAll('nav ul li a');
     const tabContents = document.querySelectorAll('.tab-content');
 
@@ -27,7 +44,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function fetchInitText() {
-    fetch('/get_init_text')
+    var url = 'http://80.138.246.203:14000/get_init_text'
+    try {
+        if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
+    } catch {}
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             data.returned_content.forEach(item => {
@@ -78,8 +99,11 @@ function sendUserMsg() {
         return base64Data;
     });
     
-
-    fetch('/send_user_msg', {
+    var url = 'http://80.138.246.203:14000/send_user_msg'
+    try {
+        if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
+    } catch {}
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
