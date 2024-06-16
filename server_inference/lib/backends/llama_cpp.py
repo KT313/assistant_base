@@ -16,7 +16,7 @@ class LlamacppHelper(BaseHelper):
 
         self.stop_token = torch.tensor(self.encode("<|eot_id|>", encode_special_tokens=True)['ids'], device=self.sync.config['torch_device'])
         
-    def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True) -> EncodeOutputDict:
+    def encode(self, inputs: Union[str, List[str]], images=None, encode_special_tokens=True) -> EncodeOutputDict:
         """
         encoded strings to tokens
         

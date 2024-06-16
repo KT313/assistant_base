@@ -145,12 +145,17 @@ class ProcessorHelper():
         takes tokens from sync.dhold.tokens_to_add and adds 
         them to sync.dhold.inputs['tokens']
         """
+        if sync.dhold.inputs['debugmode']: print(f"untrimmed before appending: {sync.mhold.helper.decode(sync.dhold.inputs['tokens'], skip_special_tokens=False)}")
+        if sync.dhold.inputs['debugmode']: print(f"will append these tensors: {sync.mhold.helper.decode(sync.dhold.inputs['tokens'][0:1, :-1], skip_special_tokens=False)}, {sync.mhold.helper.decode(torch.tensor(sync.dhold.tokens_to_add, device=sync.config['torch_device']).to(torch.int).unsqueeze(0), skip_special_tokens=False)}")
 
         if sync.dhold.inputs['tokens'].shape[0] > 1:
             tokens = sync.dhold.inputs['tokens'][0:1, :-1] # remove the temp tokens for batch beam search
         else:
-            tokens = sync.dhold.inputs['tokens'][0:1, :-1]
+            # do not strip last token if no beamsearch was done (no batched inputs)
+            tokens = sync.dhold.inputs['tokens'][0:1, :]
         sync.dhold.inputs['tokens'] = torch.concatenate([tokens, torch.tensor(sync.dhold.tokens_to_add, device=sync.config['torch_device']).to(torch.int).unsqueeze(0)], dim=-1)
+
+        if sync.dhold.inputs['debugmode']: print(f"append result: {sync.mhold.helper.decode(sync.dhold.inputs['tokens'], skip_special_tokens=False)}")
 
 
     
@@ -337,9 +342,11 @@ class ProcessorHelper():
         sync.dhold.considered_tokens_num_merker = copy.deepcopy(sync.dhold.considered_tokens_num)
         
         tokens = sync.dhold.inputs['tokens']
-            
+
+        print("before batching:", sync.mhold.helper.decode(sync.dhold.inputs['tokens']))
         sync.dhold.batched_input_tokens = torch.concatenate((tokens.repeat(sync.dhold.considered_tokens_num[0], 1), torch.tensor(sync.dhold.logits[0, 0, :sync.dhold.considered_tokens_num[0], 0], device=sync.config['torch_device']).unsqueeze(1)), dim=-1).to(torch.int)
         sync.dhold.inputs['tokens'] = sync.dhold.batched_input_tokens
+        print("after batching:", sync.mhold.helper.decode(sync.dhold.inputs['tokens']))
     def beamsearch_do_inference(self, sync):
         """
         starts sync.do_inference with limit_tokens set to 
@@ -463,7 +470,7 @@ class ProcessorHelper():
             sync.dhold.tokens_to_add = [sync.dhold.inputs['tokens'][sync.dhold.best_beam_index, -1].to(torch.int32)] # at least at the init token for the best path
             print("tokens to add base:", sync.mhold.helper.decode(torch.stack(sync.dhold.tokens_to_add)))
             sync.dhold.additional_sure_tokens = 0
-            for i in range(0, len(sync.dhold.best_beam_indices)): # skip 0 since already added
+            for i in range(1, len(sync.dhold.best_beam_indices)): # skip 0 since already added
                 if sync.dhold.best_beam_probs[i] >= math.log(sync.dhold.inputs['min_conf_for_sure']):
                     sync.dhold.additional_sure_tokens += 1
                     sync.dhold.tokens_to_add.append(sync.dhold.best_beam_indices[i].to(sync.config['torch_device']))

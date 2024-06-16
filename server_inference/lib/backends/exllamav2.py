@@ -31,7 +31,7 @@ class Exllamav2Helper(BaseHelper):
 
         
         
-    def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True) -> EncodeOutputDict:
+    def encode(self, inputs: Union[str, List[str]], images=None, encode_special_tokens=True) -> EncodeOutputDict:
         """
         encoded strings to tokens
         
