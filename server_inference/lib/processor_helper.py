@@ -227,7 +227,7 @@ class ProcessorHelper():
 
             
         if sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
-            for key in ["max_new_tokens", "do_sample", "output_scores", "return_dict_in_generate"]:
+            for key in ["max_new_tokens", "do_sample", "output_scores", "return_dict_in_generate", "eos_token_id"]:
                 try:
                     del sync.dhold.gen_kwargs[key]
                 except:
@@ -367,6 +367,8 @@ class ProcessorHelper():
         appends total probability of each beam to 
         sync.dhold.total_probs
         """
+        print("logits merker:", sync.dhold.logits_merker.shape)
+        print("logits:", sync.dhold.logits.shape)
         
         for i in range(sync.dhold.considered_tokens_num_merker[0]):
             # case considered token is stop token:

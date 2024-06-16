@@ -109,8 +109,38 @@ class LlamacppHelper(BaseHelper):
 
         output_shape = [len(out_merker), len(out_merker[0]['choices'][0]['logprobs']['top_logprobs'])]
 
-            
-        top_logits = torch.tensor([[[[self.encode(key)['ids'][0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker]).to(self.sync.config['torch_device'])
+        top_logits_merker = []
+        for beam_num, out in enumerate(out_merker):
+            beam_merker = [] # holds one beam
+            for token_num, top_logits in enumerate(out['choices'][0]['logprobs']['top_logprobs']):
+                token_merker = [] # holds possibilities for one token in a specific beam
+                for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items():
+                    entry = [self.encode(key)['ids'][0][0].item(), val]
+                    token_merker.append(entry)
+                beam_merker.append(token_merker)
+            top_logits_merker.append(beam_merker)
+
+        min_len = self.sync.dhold.max_tokens_this_gen
+        for i in range(len(top_logits_merker)):
+            if len(top_logits_merker[i]) < self.sync.dhold.max_tokens_this_gen:
+                stop_logit = [[i, 0.0] for i in range(self.sync.dhold.inputs['max_num_beams'])]
+                stop_logit[0] = [self.stop_token[0].item(), 1.0]
+                top_logits_merker[i].append(stop_logit)
+                if len(top_logits_merker[i]) < min_len:
+                    min_len = len(top_logits_merker[i])
+                
+        for i in range(len(top_logits_merker)):
+            if len(top_logits_merker[i]) > min_len:
+                top_logits_merker[i] = top_logits_merker[i][:min_len]
+        
+
+        for a in top_logits_merker:
+            print(len(a))
+            for b in a:
+                print("  ", len(b))
+        top_logits = torch.tensor(top_logits_merker, device=self.sync.config['torch_device'])
+        print(top_logits.shape)
+        # top_logits = torch.tensor([[[[self.encode(key)['ids'][0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker]).to(self.sync.config['torch_device'])
 
         
 
@@ -129,6 +159,9 @@ class LlamacppHelper(BaseHelper):
                 stopped.append(True)
             else:
                 stopped.append(False)
+
+        if isinstance(decoded[0], str):
+            decoded = [decoded]
 
         
         output = GenerateOutputDict(
