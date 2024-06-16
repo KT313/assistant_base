@@ -34,6 +34,7 @@ class ModelHolder():
         self.current_model = model_name
         self.current_dtype = dtype
         pretrained = sync.config['models'][model_name]['path']
+        use_processor = False
 
         if model_name in ["test"]:
             config = ExLlamaV2Config(pretrained)
@@ -48,6 +49,7 @@ class ModelHolder():
             self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
             self.model.eval()
             self.model.tie_weights()
+            use_processor=True
             
             
         if model_name in ["Hermes-2-Theta-Llama-3-8B"]:
@@ -72,7 +74,10 @@ class ModelHolder():
 
 
         if self.backend == "transformers":
-            self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
+            if use_processor:
+                self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer, image_processor=self.image_processor)
+            else:
+                self.helper = TransformersHelper(sync=sync, model=self.model, tokenizer=self.tokenizer)
         elif self.backend == "llama-cpp":
             self.helper = LlamacppHelper(sync=sync, model=self.model)
         elif self.backend == "exllamav2":

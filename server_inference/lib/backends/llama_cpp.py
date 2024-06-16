@@ -101,7 +101,7 @@ class LlamacppHelper(BaseHelper):
             entry_out = self.model(entry.tolist(), **kwargs)
             out_merker.append(entry_out)
 
-
+        
 
         decoded = []
         for entry in out_merker:

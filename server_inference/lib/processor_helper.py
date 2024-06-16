@@ -80,51 +80,10 @@ class ProcessorHelper():
         takes inputs from sync.dhold.inputs to convert them 
         to right formats and save them to sync.dhold
         """
-        
-        image_tensor = None
-        img_token_index = None
-        image_sizes = None
-        image_input = None
-
-        if sync.dhold.inputs['beam_config']['use_beam_search']:
-            sync.dhold.max_tokens_this_gen = 1
-        else:
-            sync.dhold.max_tokens_this_gen = sync.dhold.inputs['max_new_tokens']
-
-        
-        if sync.mhold.image_capable:
-            if len(sync.dhold.inputs['images']) > 0:
-                # for llama3-llava
-                if sync.mhold.current_model in ["llama3-llava-next-8b"]:
-                    image_tensor = process_images(sync.dhold.inputs['images'], sync.mhold.image_processor, sync.mhold.model.config)
-                    image_tensor = [_image.to(dtype=torch.float16, device=sync.config['torch_device']) for _image in image_tensor]
-                    image_sizes = [image.size for image in sync.dhold.inputs['images']]
-                    img_token_index = IMAGE_TOKEN_INDEX
-
-                # for phi3-vision
-                elif sync.mhold.current_model in ["phi-3-vision-128k-instruct"]:
-                    image_input = sync.dhold.inputs['images']
-
-        """
-        # vision models separately
-        if sync.mhold.current_model in ["llama3-llava-next-8b"]:
-            tokenizer_output = tokenizer_image_token(sync.dhold.prompt_string, sync.mhold.tokenizer, img_token_index, return_tensors="pt").unsqueeze(0).to(sync.config['torch_device'])
-            sync.dhold.inputs['tokens'] = tokenizer_output
-            sync.dhold.inputs['image_tensor'] = image_tensor
-            sync.dhold.inputs['image_sizes'] = [image.size for image in sync.dhold.inputs['images']]
-            sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape #, sync.dhold.inputs['image_tensor'][0].shape] TODO: find out image token size
-        elif sync.mhold.current_model in ["phi-3-vision-128k-instruct"]:
-            tokenizer_output = sync.mhold.tokenizer(sync.dhold.prompt_string, image_input, return_tensors="pt").to(sync.config['torch_device'])
-            sync.dhold.inputs['tokens'] = tokenizer_output.input_ids
-            sync.dhold.inputs['pixel_values'] = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None
-            sync.dhold.inputs['image_sizes'] = tokenizer_output.image_sizes if "image_sizes" in tokenizer_output else None
-            sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
-        """
 
         
         tokenizer_output = sync.mhold.helper.encode(sync.dhold.prompt_string, images=sync.dhold.inputs['images'])
-        print(tokenizer_output)
-        print(tokenizer_output.__dict__)
+        del sync.dhold.inputs['images']
         for key, val in tokenizer_output.additional_data.items():
             sync.dhold.inputs[key] = val
         
@@ -212,7 +171,7 @@ class ProcessorHelper():
             })
 
 
-        for key in ["pixel_values", "image_sizes"]:
+        for key in ["pixel_values", "image_sizes", "images"]:
             try:
                 sync.dhold.gen_kwargs.update({
                     key: sync.dhold.inputs[key]
@@ -268,7 +227,7 @@ class ProcessorHelper():
         with torch.no_grad():
             print("info before generation:")
             print("tokens input:", sync.dhold.inputs['tokens'].to(torch.int32))
-            print("kwargs input:", sync.dhold.gen_kwargs)
+            # print("kwargs input:", sync.dhold.gen_kwargs)
             generation_dict = sync.mhold.helper.generate(sync.dhold.inputs['tokens'].to(torch.int32), **sync.dhold.gen_kwargs)
             for key, val in generation_dict.items():
                 print(f"{key}: {type(val)}")
