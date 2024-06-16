@@ -76,7 +76,7 @@ def make_output_dict_str(sync, show_info=False):
 
     get_generation_stats(dhold)
     
-    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': dhold.returned_content, 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
+    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': [[entry.strip() for entry in batch] for batch in dhold.returned_content], 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
 
 def prep_for_new_gen(sync, request_json, show_info=False):
     sync.make_new_dhold()

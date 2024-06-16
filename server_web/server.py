@@ -1,13 +1,25 @@
 from flask import Flask, render_template, request, jsonify, abort
 from flask_cors import CORS
 import requests
+import random
+import string
 import json
+import os
 
 app = Flask(__name__)
 ALLOWED_REFERRERS = ["http://tobs.cloud", "http://www.tobs.cloud", "https://tobs.cloud", "https://www.tobs.cloud"]
 with open("allowed_keys.json", "r") as file:
     ALLOWED_API_KEYS = json.loads(file.read())
 CORS(app, resources={r"/*": {"origins": ["tobs.cloud", "www.tobs.cloud"]}})  # Allow only the React app
+
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+tmp_keys_for_local = []
+
+
+
+def randomstring(length):
+   letters = string.ascii_lowercase
+   return ''.join(random.choice(letters) for i in range(length))
 
 
 def check_referrer(func):
@@ -24,6 +36,15 @@ def check_referrer(func):
 
 def check_api_key(func):
     def wrapper(*args, **kwargs):
+        # allow from localhost without api_key
+        # TODO: make more secure so request cannot fake remote_addr
+        remote_addr = request.remote_addr
+        if remote_addr in ALLOWED_HOSTS:
+            print(f"Access from {remote_addr}, API key check bypassed")
+            return func(*args, **kwargs)
+        else:
+            print(f"Access from {remote_addr}, which is not in ALLOWED_HOSTS, api_key required")
+            
         api_key = request.args.get('api_key')
         if api_key in ALLOWED_API_KEYS:
             print(f"access with allowed api_key: {api_key}")

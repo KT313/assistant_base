@@ -1,14 +1,42 @@
-from typing import Union, List, Dict, TypedDict, Optional
+from typing import Union, List, Dict, TypedDict, Optional, Any
 import torch
 from abc import ABC, abstractmethod
 from ..misc import softmax, find_top_indexes, show_dict_compact
 
-
-
-class EncodeOutputDict(TypedDict):
+class BaseEncodeOutputDict(TypedDict):
     ids: torch.Tensor
     mask: torch.Tensor
     position_offsets: Optional[torch.Tensor]
+
+class EncodeOutputDict:
+    def __init__(self, **kwargs):
+        self.data = BaseEncodeOutputDict(
+            ids=kwargs.pop('ids'),
+            mask=kwargs.pop('mask'),
+            position_offsets=kwargs.pop('position_offsets', None)
+        )
+        self.additional_data = kwargs if kwargs != None else {}
+        if self.data['position_offsets'] == None:
+            del self.data['position_offsets']
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self.data:
+            return self.data[key]
+        elif key in self.additional_data:
+            return self.additional_data[key]
+        raise KeyError(f"Key {key} not found in EncodeOutputDict.")
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self.data:
+            self.data[key] = value
+        else:
+            self.additional_data[key] = value
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.data or key in self.additional_data
+
+    def __repr__(self):
+        return f"DynamicEncodeOutputDict(data={self.data}, additional_data={self.additional_data})"
 
     def __post_init__(self):
         assert self.ids.ndim == 2, f"ids should be a 2D tensor (batch, token), got: {self.ids.shape}"

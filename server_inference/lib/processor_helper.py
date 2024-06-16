@@ -105,7 +105,7 @@ class ProcessorHelper():
                 elif sync.mhold.current_model in ["phi-3-vision-128k-instruct"]:
                     image_input = sync.dhold.inputs['images']
 
-        
+        """
         # vision models separately
         if sync.mhold.current_model in ["llama3-llava-next-8b"]:
             tokenizer_output = tokenizer_image_token(sync.dhold.prompt_string, sync.mhold.tokenizer, img_token_index, return_tensors="pt").unsqueeze(0).to(sync.config['torch_device'])
@@ -119,10 +119,15 @@ class ProcessorHelper():
             sync.dhold.inputs['pixel_values'] = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None
             sync.dhold.inputs['image_sizes'] = tokenizer_output.image_sizes if "image_sizes" in tokenizer_output else None
             sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
-        
+        """
 
         
-        tokenizer_output = sync.mhold.helper.encode(sync.dhold.prompt_string)
+        tokenizer_output = sync.mhold.helper.encode(sync.dhold.prompt_string, images=sync.dhold.inputs['images'])
+        print(tokenizer_output)
+        print(tokenizer_output.__dict__)
+        for key, val in tokenizer_output.additional_data.items():
+            sync.dhold.inputs[key] = val
+        
         sync.dhold.inputs['tokens'] = tokenizer_output['ids'].to(sync.config['torch_device'])
         sync.dhold.input_shape = sync.dhold.inputs['tokens'].shape
         if "position_offsets" in tokenizer_output:
@@ -190,6 +195,9 @@ class ProcessorHelper():
                 'temperature': 1,
                 # 'output_scores': True,
                 'return_dict_in_generate': True,
+                'eos_token_id': sync.mhold.helper.stop_token,
+                # 'stop_token': sync.mhold.tokenizer.eos_token_id
+                #"eos_token_id": [128001, 128009],
             }
         
 
@@ -199,25 +207,19 @@ class ProcessorHelper():
             })
 
 
+        for key in ["pixel_values", "image_sizes"]:
+            try:
+                sync.dhold.gen_kwargs.update({
+                    key: sync.dhold.inputs[key]
+                })
+            except:
+                pass
 
 
 
-        
-            
 
 
-        if sync.dhold.inputs['model'] == "llama3-llava-next-8b":
-            sync.dhold.gen_kwargs.update({
-                'images': sync.dhold.inputs['image_tensor'],
-                'image_sizes': sync.dhold.inputs['image_sizes'],
-            })
 
-        if sync.dhold.inputs['model'] == "phi-3-vision-128k-instruct":
-            sync.dhold.gen_kwargs.update({
-                'pixel_values': sync.dhold.inputs['pixel_values'],
-                'image_sizes': sync.dhold.inputs['image_sizes'],
-                'eos_token_id': sync.mhold.tokenizer.eos_token_id
-            })
             
         if sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
             for key in ["max_new_tokens", "do_sample", "output_scores", "return_dict_in_generate"]:
@@ -259,8 +261,13 @@ class ProcessorHelper():
         """
         
         with torch.no_grad():
-
+            print("info before generation:")
+            print("tokens input:", sync.dhold.inputs['tokens'].to(torch.int32))
+            print("kwargs input:", sync.dhold.gen_kwargs)
             generation_dict = sync.mhold.helper.generate(sync.dhold.inputs['tokens'].to(torch.int32), **sync.dhold.gen_kwargs)
+            for key, val in generation_dict.items():
+                print(f"{key}: {type(val)}")
+            # exit()
 
             sync.dhold.returned_content = generation_dict['decoded_output']
             sync.dhold.output_shape = generation_dict['output_shape']

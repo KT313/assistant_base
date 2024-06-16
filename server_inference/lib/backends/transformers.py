@@ -1,4 +1,5 @@
 from .base import *
+from llava.constants import IMAGE_TOKEN_INDEX
 
 
 class TransformersHelper(BaseHelper):
@@ -16,9 +17,9 @@ class TransformersHelper(BaseHelper):
         self.image_processor = image_processor
         self.path_to_model = path_to_model
 
-        self.stop_token = torch.tensor([self.tokenizer.eos_token_id], device=self.sync.config['torch_device'])
+        self.stop_token = torch.tensor([self.tokenizer.eos_token_id, 128001, 128009], device=self.sync.config['torch_device'])
         
-    def encode(self, inputs: Union[str, List[str]], encode_special_tokens=True) -> EncodeOutputDict:
+    def encode(self, inputs: Union[str, List[str]], images=None, encode_special_tokens=True) -> EncodeOutputDict:
         """
         encoded strings to tokens
         
@@ -26,13 +27,52 @@ class TransformersHelper(BaseHelper):
         output: EncodeOutputDict containing 
                 2D tensor of (batch, tokens) and mask for it
         """
+
+        if images != None and len(images) >= 1:
+            if self.sync.mhold.current_model == "llama3-llava-next-8b":
+                from transformers import AutoProcessor
+
+                processor = AutoProcessor.from_pretrained(self.sync.config['models'][self.sync.mhold.current_model]['path'], trust_remote_code=True)
+                tokenizer_output = processor(inputs, images, return_tensors="pt").to(self.sync.config['torch_device'])
+                
+
+                output = EncodeOutputDict(
+                    ids = tokenizer_output.input_ids,
+                    mask = torch.ones_like(tokenizer_output.input_ids, device=self.sync.config['torch_device']),
+                    images = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None,
+                    image_sizes = [image.size for image in images]
+                )
+                
+            elif self.sync.mhold.current_model == "phi-3-vision-128k-instruct":
+                from transformers import AutoProcessor
+
+                processor = AutoProcessor.from_pretrained(self.sync.config['models'][self.sync.mhold.current_model]['path'], trust_remote_code=True)
+                tokenizer_output = processor(inputs, images, return_tensors="pt").to(self.sync.config['torch_device'])
+
+                output = EncodeOutputDict(
+                    ids = tokenizer_output.input_ids,
+                    mask = torch.ones_like(tokenizer_output.input_ids, device=self.sync.config['torch_device']),
+                    pixel_values = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None,
+                    image_sizes = tokenizer_output.image_sizes if "image_sizes" in tokenizer_output else None
+                )
+            else:
+                # not vision capable model, ignore images
+                encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
         
-        encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
+                output = EncodeOutputDict(
+                    ids = encoded_ids,
+                    mask = torch.ones_like(encoded_ids, device=self.sync.config['torch_device']),
+                )
+
+        else:
         
-        output = EncodeOutputDict(
-            ids = encoded_ids,
-            mask = torch.ones_like(encoded_ids, device=self.sync.config['torch_device'])
-        )
+            encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
+        
+            output = EncodeOutputDict(
+                ids = encoded_ids,
+                mask = torch.ones_like(encoded_ids, device=self.sync.config['torch_device']),
+            )
+            
         return output
         
 

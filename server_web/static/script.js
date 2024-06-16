@@ -3,6 +3,11 @@ function getApiKeyFromUrl() {
     return urlParams.get('api_key');
 }
 
+function isLocalhost() {
+  const hostname = window.location.hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 
 document.addEventListener('DOMContentLoaded', function() {
     const apiKey = getApiKeyFromUrl();
@@ -48,6 +53,9 @@ function fetchInitText() {
     try {
         if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
     } catch {}
+    if (isLocalhost()) {
+        url = 'http://127.0.0.1:14000/get_init_text'
+    }
     fetch(url)
         .then(response => response.json())
         .then(data => {
@@ -103,6 +111,9 @@ function sendUserMsg() {
     try {
         if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
     } catch {}
+    if (isLocalhost()) {
+        url = 'http://127.0.0.1:14000/send_user_msg'
+    }
     fetch(url, {
         method: 'POST',
         headers: {
