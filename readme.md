@@ -1,17 +1,24 @@
 Free to use under the GNU Affero General Public License v3.0.  
 A closed-source license can be obtained for commercial use. If interested, please send an inquiry to asba@tobs.cloud.
 
+This project may use optional libraries like LlaVA-NeXT that are subject to their respective original licenses, which may be required to support certain models or functions. This project can be modified to run without these optional libraries if required.
+
 ## Asba Web Assistant
 
 working:  
-- image support  
+- image input support (Llama-3-Llava & phi-3-vision)  
 - multiple models  
-- custom adaptive beam search  
+- custom adaptive beam search
+
+WIP:
+- Agent Task Mode (Structuring large / complicated tasks and progressively working on it)
+- txt2img, txt+img2img
+- training support
 
 ### running it  
-`cd server_inference && python3 server.py # this is enough if you only want api without web ui`  
+1. `./start_infer.sh` # this is enough if you only want the api without web ui  
 
-`cd server_web && python3 server.py`
+2. `./start_web.sh` # for the web-ui
 
 ### more info  
 

@@ -27,6 +27,13 @@
         }
     },
     "models": {
+        "test": {
+            "name": "test",
+            "path": "/home/tobi/ai/models/text_to_text/Meta-Llama-3-8B-Instruct-6.0bpw-h6-exl2",
+            "template": "llama-3",
+            "backend": "exllamav2",
+            "image-capable": false
+        },
         "llama3-llava-next-8b": {
             "name": "llama3-llava-next-8b",
             "path": "/home/tobi/ai/models/multimodal/llama3-llava-next-8b",

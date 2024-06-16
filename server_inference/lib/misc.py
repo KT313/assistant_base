@@ -76,7 +76,7 @@ def make_output_dict_str(sync, show_info=False):
 
     get_generation_stats(dhold)
     
-    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': dhold.returned_content, 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
+    dhold.output_dict = json.dumps({'status': 'success', 'returned_content': [[entry.strip() for entry in batch] for batch in dhold.returned_content], 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'num_input_tokens': dhold.num_input_tokens, 'num_output_tokens': dhold.num_output_tokens, 'total_time_taken': dhold.total_time_taken, 'tokens_per_second': dhold.tokens_per_second}}, default=str)
 
 def prep_for_new_gen(sync, request_json, show_info=False):
     sync.make_new_dhold()
@@ -85,10 +85,35 @@ def prep_for_new_gen(sync, request_json, show_info=False):
     
     dhold.start_time_total =  time.time()
     data = dhold.request_json
+    print("inputs:")
+    counter = 1
     if show_info:
         for key, val in data.items():
             if key != "images":
-                print(key, val, flush=True)
+                if key == "chat":
+                    print(" |", key, "(dict):")
+                    for entry in val:
+                        if counter%2==0:
+                            print("    |", f"{str(entry['role']+': ').ljust(14, '.')} {entry['content']}")
+                        else:
+                            print("    |", f"{str(entry['role']+': ').ljust(14)} {entry['content']}")
+                        counter += 1
+                else:
+                    if not isinstance(val, dict):
+                        if counter%2==0:
+                            print(" |", str(key+': ').ljust(24, '.'), val, flush=True)
+                        else:
+                            print(" |", str(key+': ').ljust(24), val, flush=True)
+                        counter += 1
+                    else:
+                        print(" |", key, "(dict):")
+                        for sub_key, sub_val in val.items():
+                            if counter%2==0:
+                                print("    |", str(sub_key+': ').ljust(24, '.'), sub_val, flush=True)
+                            else:
+                                print("    |", str(sub_key+': ').ljust(24), sub_val, flush=True)
+                            counter += 1
+                        
 
     if not isinstance(data['chat'], list):
         data['chat'] = [data['chat']]
@@ -98,7 +123,10 @@ def prep_for_new_gen(sync, request_json, show_info=False):
         inputs['images'] = base64_to_pil(inputs['images'])
         if show_info:
             for image in inputs['images']:
-                print(image.size)
+                print(" |", image.size)
+
+    if show_info:
+        print()
     inputs['max_new_tokens'] = int(inputs['max_new_tokens'].strip())
     
     dhold.inputs = inputs
@@ -115,25 +143,29 @@ def base64_to_pil(base64_images):
 
 
 # returns np array: (batch_dim, token_index, logit_index, (token, probability))
-def find_top_indexes(sync, arr, n_top):
-    arr = np.array(arr)
+def find_top_indexes(sync, arr, is_log_format=False):
+    if arr is None:
+        return None
+    n_top = sync.dhold.inputs['max_num_beams']
+    arr = torch.tensor(arr)
     if len(arr.shape) == 2:
-        arr = np.expand_dims(arr, axis=0)
+        arr = arr.unsqueeze(0)
 
-    arr = np.array(arr)
-    nan_mask = np.isnan(arr)
-    arr[nan_mask] = -np.inf
+    if not is_log_format:
 
-    softmax_arr = softmax(arr, axis=-1)
-    top_indexes = np.argsort(softmax_arr)[..., -n_top:]
+        nan_mask = torch.isnan(arr)
+        arr[nan_mask] = -float('inf')
+    
+        softmax_arr = torch.softmax(arr, dim=-1)
+    else:
+        softmax_arr = torch.exp(arr)
+    top_values, top_indexes = torch.topk(softmax_arr, n_top, dim=-1)
 
-    result_probs = np.take_along_axis(softmax_arr, top_indexes, axis=-1)[..., ::-1]
-    result_indices = top_indexes[..., ::-1]
+    result_probs = top_values
+    result_indices = top_indexes
 
-    result = np.stack([result_indices, result_probs], axis=-1)
+    result = torch.stack([result_indices, result_probs], dim=-1)
 
-    if not sync.mhold.backend == "llama-cpp":
-        result = np.swapaxes(result,0,1)
     return result
 
 def test_models(model, test_mode, multi_turn, infer):
@@ -143,5 +175,65 @@ def test_models(model, test_mode, multi_turn, infer):
     if test_mode:
         for entry in model:
             if not multi_turn:
-                print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
-                infer({'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'hi'}], 'model': entry, 'manual_system_prompt': '', 'use_functions': False, 'model_dtype': 'bfloat16', 'max_new_tokens': '64', 'debugmode': True, 'images': [], 'beam_config': {'use_beam_search': True, 'max_num_beams': '2', 'depth_beams': '4', 'min_conf_for_sure': '0.95', 'min_conf_for_consider': '0.02', 'prob_sum_for_search': '0.98'}})
+                print("\n\n\n\n\n\n\n")
+                infer({
+                    'chat': [{'role': 'System', 'content': 'Hello, I am the system.'}, {'role': 'User', 'content': 'Hi!'}], 
+                    'model': entry, 
+                    'manual_system_prompt': '', 
+                    'use_functions': False, 
+                    'use_voiceinput': False,
+                    'use_voiceoutput': False,
+                    'allow_imagegen': False,
+                    'agent_task_mode': False,
+                    'model_dtype': 'bfloat16', 
+                    'max_new_tokens': '16', 
+                    'debugmode': True, 
+                    'images': [], 
+                    'beam_config': {
+                        'use_beam_search': True, 
+                        'max_num_beams': '3', 
+                        'depth_beams': '4', 
+                        'min_conf_for_sure': '0.95', 
+                        'min_conf_for_consider': '0.02', 
+                        'prob_sum_for_search': '0.98'
+                    }
+                })
+
+
+
+
+def show_dict_compact(dict_input, indent=0):
+    indentation = "   "*indent
+    if isinstance(dict_input, list):
+        if len(dict_input) <= 20:
+            for entry in dict_input:
+                if isinstance(entry, dict) or isinstance(entry, list):
+                    show_dict_compact(entry, indent=indent+1)
+                elif isinstance(entry, torch.Tensor) or isinstance(entry, np.ndarray):
+                    print(indentation, type(entry), entry.shape)
+                else:
+                    print(indentation, type(entry))
+        else:
+            print(indentation, type(dict_input), f"len: {len(dict_input)}")
+
+    elif isinstance(dict_input, dict):
+        if len(dict_input) <= 20:
+            for key, val in dict_input.items():
+                if isinstance(val, dict) or isinstance(val, list):
+                    print(indentation, f"{key}:")
+                    show_dict_compact(val, indent=indent+1)
+                elif isinstance(val, torch.Tensor) or isinstance(val, np.ndarray):
+                    print(indentation, key, type(val), val.shape)
+                else:
+                    print(indentation, key, type(val))
+        else:
+            print(indentation, type(dict_input), f"len: {len(dict_input)}")
+    else:
+        print(f"Error: input is neither dict nor list, got: {type(dict_input)}")
+        
+            
+
+
+
+
+

@@ -9,15 +9,19 @@ import os
 import io
 import gc
 
-from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration
+from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration, GPTQConfig
+from exllamav2 import ExLlamaV2, ExLlamaV2Config, ExLlamaV2Cache, ExLlamaV2Tokenizer
+from exllamav2.generator import ExLlamaV2Sampler, ExLlamaV2DynamicGenerator, ExLlamaV2BaseGenerator
 from flask import Flask, render_template, request, jsonify
 from scipy.special import softmax
+from typing import Union, List
 from llama_cpp import Llama
 from tqdm import tqdm
 from PIL import Image
 import bitsandbytes
 import numpy as np
 import flash_attn
+import random
 import torch
 
 

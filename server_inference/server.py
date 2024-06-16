@@ -9,10 +9,13 @@ def infer_helper(request_json):
         with torch.no_grad():
             prep_for_new_gen(sync, request_json, show_info=True)
             
-            sync.prep_gen_inputs()
-            sync.generate()
+            if sync.dhold.inputs['agent_task_mode']: sync.solve_agent_task()
+            else: sync.generate()
             
-            make_output_dict_str(sync, show_info=True)
+            make_output_dict_str(sync, show_info=False)
+            print("\nfinal output:")
+            for key, val in json.loads(sync.dhold.output_dict).items():
+                print(" |", f"{key}: {val}")
             return sync.dhold.output_dict
     
 
@@ -31,8 +34,9 @@ def infer(manual_request = None):
 if __name__ == '__main__':
     test_mode = False
     multi_turn = False
-    models = ["llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
-    model = models[:]
+    models = ["test", "llama3-llava-next-8b", "Meta-Llama-3-70B-Instruct-IQ1_M", "Hermes-2-Theta-Llama-3-8B", "phi-3-vision-128k-instruct"]
+    models_a = ["Hermes-2-Theta-Llama-3-8B", "Meta-Llama-3-70B-Instruct-IQ1_M", "test"]
+    model = models_a[:]
 
     if test_mode: test_models(model, test_mode, multi_turn, infer)
     else: app.run(port=10000)

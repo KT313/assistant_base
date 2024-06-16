@@ -1,0 +1,6 @@
+"Alice has 3 sisters. Her
+mother has 1 sister who does not have children - she has 7 nephews and nieces and also 2 brothers.
+Alice’s father has a brother who has 5 nephews and nieces in total, and who has also 1 son. How
+many cousins does Alice’s sister have?"
+
+<A: should be 8 cousins>

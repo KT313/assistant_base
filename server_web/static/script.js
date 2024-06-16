@@ -1,4 +1,41 @@
+function getApiKeyFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('api_key');
+}
+
+function isLocalhost() {
+  const hostname = window.location.hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+
 document.addEventListener('DOMContentLoaded', function() {
+    const apiKey = getApiKeyFromUrl();
+    document.apiKey = apiKey;
+    if (document.apiKey) {
+        console.log('API Key:', document.apiKey);
+        // Use the API key for further operations
+        // Example: make an API call
+        // fetch(`http://example.com/api?api_key=${apiKey}`)
+    } else {
+        console.error('API key not found in the URL');
+    }
+    //console.log("document.api_key:", document.api_key);
+    const tabs = document.querySelectorAll('nav ul li a');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            tabs.forEach(tab => tab.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(this.getAttribute('data-tab')).classList.add('active');
+        });
+    });
+    
     document.getElementById('display-text').innerHTML = "";
     document.getElementById('display-text').chat = [];
     fetchInitText();
@@ -12,7 +49,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function fetchInitText() {
-    fetch('/get_init_text')
+    var url = 'http://80.138.246.203:14000/get_init_text'
+    try {
+        if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
+    } catch {}
+    if (isLocalhost()) {
+        url = 'http://127.0.0.1:14000/get_init_text'
+    }
+    fetch(url)
         .then(response => response.json())
         .then(data => {
             data.returned_content.forEach(item => {
@@ -40,6 +84,10 @@ function sendUserMsg() {
     const prob_sum_for_search = document.getElementById('prob_sum_for_search');
     
     const usefunctions = document.getElementById('usefunctions-checkbox');
+    const usevoiceinput = document.getElementById('usevoiceinput-checkbox');
+    const usevoiceoutput = document.getElementById('usevoiceoutput-checkbox');
+    const allowimagegen = document.getElementById('allowimagegen-checkbox');
+    const agenttaskmode = document.getElementById('agenttaskmode-checkbox');
     
     const modeldtype = document.querySelector('input[name="model-dtype"]:checked');
     
@@ -59,8 +107,14 @@ function sendUserMsg() {
         return base64Data;
     });
     
-
-    fetch('/send_user_msg', {
+    var url = 'http://80.138.246.203:14000/send_user_msg'
+    try {
+        if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
+    } catch {}
+    if (isLocalhost()) {
+        url = 'http://127.0.0.1:14000/send_user_msg'
+    }
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -70,6 +124,10 @@ function sendUserMsg() {
             'model': model_val, 
             'manual_system_prompt': manualSystemPrompt.value, 
             'use_functions': usefunctions.checked, 
+            'use_voiceinput': usevoiceinput.checked, 
+            'use_voiceoutput': usevoiceoutput.checked, 
+            'allow_imagegen': allowimagegen.checked, 
+            'agent_task_mode': agenttaskmode.checked, 
             'model_dtype': modeldtype.value, 
             'max_new_tokens': max_new_tokens.value, 
             'debugmode': debugmode.checked, 
@@ -161,6 +219,22 @@ function moreInfoCheckbox() {
 
 function usefunctionsCheckbox() {
     console.log("changed usefunctions checkbox");
+}
+
+function usevoiceinputCheckbox() {
+    console.log("changed usevoiceinput checkbox");
+}
+
+function usevoiceoutputCheckbox() {
+    console.log("changed usevoiceoutput checkbox");
+}
+
+function allowimagegenCheckbox() {
+    console.log("changed allowimagegen checkbox");
+}
+
+function agenttaskmodeCheckbox() {
+    console.log("changed agenttaskmode checkbox");
 }
 
 function usebeamsearchCheckbox() {

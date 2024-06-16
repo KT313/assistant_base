@@ -1,0 +1,1 @@
+Alice has <N> brothers and she also has <M> sisters. How many sisters does Alice’s brother have?"
