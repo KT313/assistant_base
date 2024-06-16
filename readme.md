@@ -6,7 +6,7 @@ This project may use optional libraries like LlaVA-NeXT that are subject to thei
 ## Asba Web Assistant
 
 working:  
-- support for probably all transformer, llama-cpp and exllamav2 models
+- support for probably all **transformer**, **llama-cpp** and **exllamav2** models
 - image input support for Llama-3-Llava & phi-3-vision (transformers) 
 - custom adaptive beam search
 
