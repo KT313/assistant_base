@@ -134,12 +134,7 @@ class LlamacppHelper(BaseHelper):
                 top_logits_merker[i] = top_logits_merker[i][:min_len]
         
 
-        for a in top_logits_merker:
-            print(len(a))
-            for b in a:
-                print("  ", len(b))
         top_logits = torch.tensor(top_logits_merker, device=self.sync.config['torch_device'])
-        print(top_logits.shape)
         # top_logits = torch.tensor([[[[self.encode(key)['ids'][0][0], val] for key, val in dict(list(top_logits.items())[:self.sync.dhold.inputs['max_num_beams']]).items()] for top_logits in out['choices'][0]['logprobs']['top_logprobs']] for out in out_merker]).to(self.sync.config['torch_device'])
 
         

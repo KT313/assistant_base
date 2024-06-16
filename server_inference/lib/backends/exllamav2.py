@@ -154,7 +154,6 @@ class Exllamav2Helper(BaseHelper):
             results = [result for result in results if result['stage'] == "streaming"]
 
             for result in results:
-                print(result)
                 serial = result['serial']
                 if serial not in logits_merker:
                     logits_merker[serial] = []
@@ -166,32 +165,12 @@ class Exllamav2Helper(BaseHelper):
                     logits_merker[serial].append(eos_token_logits)
 
 
-        for key, val in logits_merker.items():
-            print(f"{key}: {len(val)}")
-            for entry in val:
-                try:
-                    print("  ", entry.shape)
-                except:
-                    print("  ", entry)
 
         
 
         self.generator.active_jobs = []
 
-        # get all logits outputs to the same length so they can be concatenated in case one of them got stopped early
-        # beams = [[] for _ in range(inputs.shape[0])]
-        print(logits_merker)
-        # if len(logits_merker) == 1 and next(iter(logits_merker.values())) == []:
-            
-
-        # if self.sync.dhold.inputs['beam_config']['use_beam_search']:
         beams = [torch.concatenate(val, dim=-2) for key, val in logits_merker.items()]
-
-        print("number of beams:", len(beams))
-        for index, beam in enumerate(beams):
-            print(f"beam {index}:")
-            for entry in beam:
-                print(entry.shape)
 
         # truncate all beams to the shortest beam length
         min_length = beams[0].shape[-2]
@@ -204,13 +183,10 @@ class Exllamav2Helper(BaseHelper):
                 beams[index] = beams[index][:, :min_length, :]
         
         logits = torch.concatenate(beams, dim=0)
-        print(logits.shape)
 
         top_logits = find_top_indexes(self.sync, logits)
+
         
-
-
-
         tokens_decoded_merker = self.decode(top_logits[:, :, 0, 0].to(torch.int32))
         output_shape = logits.shape[:2]
         
