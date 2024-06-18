@@ -5,6 +5,9 @@ from lib.sync import Sync
 sync = Sync(config)
 
 def infer_helper(request_json):
+    if sync.mode != "assistant":
+        sync.change_mode("assistant")
+    
     with ClearCache():
         with torch.no_grad():
             prep_for_new_gen(sync, request_json, show_info=True)
@@ -16,6 +19,18 @@ def infer_helper(request_json):
             print("\nfinal output:")
             for key, val in json.loads(sync.dhold.output_dict).items():
                 print(" |", f"{key}: {val}")
+            return sync.dhold.output_dict
+
+
+def image_gen_helper(request_json):
+    if sync.mode != "image_gen":
+        sync.change_mode("image_gen")
+        
+    with ClearCache():
+        with torch.no_grad():
+            prep_for_new_image_gen(sync, request_json, show_info=True)
+            sync.generate_image()
+            make_output_dict_image_gen_str(sync, show_info=False)
             return sync.dhold.output_dict
     
 
@@ -30,6 +45,14 @@ def infer(manual_request = None):
         return infer_helper(manual_request)
     else:
         return infer_helper(request.get_json())
+
+@app.route('/image_gen', methods=['POST'])
+def image_gen(manual_request = None):
+    if manual_request != None:
+        return image_gen_helper(manual_request)
+    else:
+        return image_gen_helper(request.get_json())
+
 
 if __name__ == '__main__':
     test_mode = False

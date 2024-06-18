@@ -1,15 +1,27 @@
 from .imports import *
 from .model_holder import ModelHolder
+from .model_holder_image import ModelHolder as ModelHolderImageGen
 from .data_holder import DataHolder
 from .misc import softmax, find_top_indexes
 from .processor_helper import ProcessorHelper
 
 class Sync():
-    def __init__(self, config=None):
+    def __init__(self, config=None, mode=None):
         self.mhold = None
         self.dhold = None
+        self.mode = mode
         self.phelp = ProcessorHelper()
         self.config = config
+
+    def generate_image(self):
+        if self.mhold == None or self.mhold.current_model != self.dhold.inputs['model']:
+            self.mhold = ModelHolderImageGen()
+            self.mhold.load_model(self, self.dhold.inputs['model'], "float16")
+
+        image = self.mhold.model(self.dhold.inputs['prompt']).images[0] 
+        self.dhold.generated_image = [image]
+
+        
 
     def prep_gen_inputs(self):
         """
@@ -73,6 +85,9 @@ class Sync():
         self.phelp.inference_check_stop_token_and_alternative_inputs(self)
 
         self.phelp.inference_do_inference(self)
+        if self.dhold.error:
+            self.dhold.beamsearch_break = True # just in case of beam-search
+            return None
 
         if self.dhold.inputs['beam_config']['use_beam_search']:
             self.phelp.inference_get_considered_tokens_num(self)
@@ -160,3 +175,8 @@ class Sync():
 
     def make_new_mhold(self):
         self.mhold = ModelHolder()
+
+    def change_mode(self, new_mode):
+        self.__init__(mode=new_mode, config=self.config)
+        gc.collect()
+        torch.cuda.empty_cache()

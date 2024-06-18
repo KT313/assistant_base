@@ -226,27 +226,35 @@ class ProcessorHelper():
         """
         
         with torch.no_grad():
-            generation_dict = sync.mhold.helper.generate(sync.dhold.inputs['tokens'].to(torch.int32), **sync.dhold.gen_kwargs)
-            if sync.dhold.inputs['debugmode']:
-                for key, val in generation_dict.items():
-                    print(f"{key}: {type(val)}")
-
-            sync.dhold.returned_content = generation_dict['decoded_output']
-            sync.dhold.output_shape = generation_dict['output_shape']
-            sync.dhold.logits = generation_dict['top_logits']
-
-            sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
-
-            if sync.dhold.inputs['beam_config']['use_beam_search']:
-                if "stopped" in generation_dict:
-                    sync.dhold.stopped = generation_dict['stopped']
+            try:
+                generation_dict = sync.mhold.helper.generate(sync.dhold.inputs['tokens'].to(torch.int32), **sync.dhold.gen_kwargs)
+                if sync.dhold.inputs['debugmode']:
+                    for key, val in generation_dict.items():
+                        print(f"{key}: {type(val)}")
     
-                if sync.dhold.logits.shape[0] == 1 and sync.dhold.stopped[0]:
-                    sync.dhold.beamsearch_break = True
-                    print("beam search stopped since only beam contains stop")
+                sync.dhold.returned_content = generation_dict['decoded_output']
+                sync.dhold.output_shape = generation_dict['output_shape']
+                sync.dhold.logits = generation_dict['top_logits']
+    
+                sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
+    
+                if sync.dhold.inputs['beam_config']['use_beam_search']:
+                    if "stopped" in generation_dict:
+                        sync.dhold.stopped = generation_dict['stopped']
+        
+                    if sync.dhold.logits.shape[0] == 1 and sync.dhold.stopped[0]:
+                        sync.dhold.beamsearch_break = True
+                        print("beam search stopped since only beam contains stop")
 
-            return None
-
+            except RuntimeError as e:
+                if 'CUDA out of memory' in str(e):
+                    print('CUDA out of memory error caught!', e)
+                    sync.dhold.error = True
+                    sync.dhold.error_info = "CUDA out of memory"
+                else:
+                    print(e)
+                    sync.dhold.error = True
+                    sync.dhold.error_info = str(e)
     
             
     def inference_get_considered_tokens_num(self, sync):

@@ -299,3 +299,23 @@ a.clear-chat-button:active{
 .image-upload-area:hover .upload-icon {
     opacity: 1;
 }
+
+#image-generation-output {
+    width: 38vw;
+    min-width: 500px;
+    height: 40vh;
+    border: 1px solid #ccc;
+    padding: 5px;
+    margin-left: 10px;
+    margin-top: 15px;
+    overflow-y: auto;
+}
+
+.user-input {
+    width: 38vw;
+    min-width: 500px;
+    padding: 5px;
+    margin-left: 10px;
+    margin-top: 15px;
+    resize: vertical;
+}

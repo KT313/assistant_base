@@ -34,35 +34,38 @@ class ModelHolder():
         self.current_model = model_name
         self.current_dtype = dtype
         pretrained = sync.config['models'][model_name]['path']
+        backend = sync.config['models'][model_name]['backend']
         use_processor = False
 
-        if model_name in ["test"]:
+
+        if model_name in ["llama3-llava-next-8b"]:
+            self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
+            self.model.eval()
+            self.model.tie_weights()
+            use_processor=True
+
+        elif model_name in ["phi-3-vision-128k-instruct"]:
+            self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=True) 
+            
+            
+        elif backend in ["transformers"]:
+            self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
+            self.model = LlamaForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, attn_implementation="flash_attention_2")
+            
+            
+        elif backend in ["llama-cpp"]:
+            self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
+
+
+        elif backend in ["exllamav2"]:
             config = ExLlamaV2Config(pretrained)
             self.model = ExLlamaV2(config)
             self.cache = ExLlamaV2Cache(self.model, max_seq_len = 4096, lazy = True)
             self.model.load_autosplit(self.cache, progress = True)
             self.tokenizer = ExLlamaV2Tokenizer(config)
 
-        if model_name in ["llama3-llava-next-8b"]:
-
-            
-            self.tokenizer, self.model, self.image_processor, max_length = load_pretrained_model(pretrained, None, "llava_llama3", device_map=sync.config['torch_device_map'])
-            self.model.eval()
-            self.model.tie_weights()
-            use_processor=True
-            
-            
-        if model_name in ["Hermes-2-Theta-Llama-3-8B"]:
-            self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
-            self.model = LlamaForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, attn_implementation="flash_attention_2")
-            
-        if model_name in ["phi-3-vision-128k-instruct"]:
-            self.model = AutoModelForCausalLM.from_pretrained(pretrained, device_map="cuda", trust_remote_code=True, torch_dtype="auto").eval()
-            self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=True) 
-            
-        if model_name in ["Meta-Llama-3-70B-Instruct-IQ2_S", "Meta-Llama-3-70B-Instruct-IQ1_M"]:
-            self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
-
+        
         try:
             self.model.eval()
         except:
