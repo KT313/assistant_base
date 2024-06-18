@@ -102,8 +102,11 @@
             <!-- Content for the Image Generation tab goes here -->
             <div style="display: flex; align-items: start;">
                 <div id="image-generation-main-area">
-                    <div id="image-generation-output" style="background: #fff; width: 512px; height:512px;"></div>
-                    <textarea type="text" class="user-input" id="image-generation-user-input" placeholder="Type your text here..."></textarea>
+                    <div id="image-generation-output" style="background: #fff; width: 512px; height:512px; overflow:hidden;"></div>
+                    <span>Positive:</span><br>
+                    <textarea type="text" class="user-input" id="image-generation-user-input" placeholder="Type your text here...">a cute lil cat uwu</textarea><br>
+                    <span>Negative (optional):</span><br>
+                    <textarea type="text" class="user-input" id="image-generation-user-input-negative" placeholder="Type your text here..."></textarea><br>
                     <div class="spin" id="image-generation-loading-animation" style="display: none;">
                         <div></div>
                         <div></div>
@@ -136,9 +139,11 @@
                              <option value="Euler">Euler</option>
                         </select>
                         CFG <input type="number" class="num-input" min="0" step=0.25 id="cfg" value=4><br>
-                        steps <input type="number" class="num-input" min="0" step=0.25 id="steps" value=4><br>
-                        batch_size <input type="number" class="num-input" min="0" step=0.25 id="image_gen_batch_size" value=4><br>
+                        steps <input type="number" class="num-input" min="0" step=0.25 id="steps" value=20><br>
+                        clip-skip <input type="number" class="num-input" min="0" step=1 id="clip-skip" value=0><br>
+                        batch_size <input type="number" class="num-input" min="0" step=1 id="image_gen_batch_size" value=4><br>
                         resolution (w x h) <input type="number" class="num-input" min="8" step=8 id="image_gen_width" value=512> x <input type="number" class="num-input" min="8" step=8 id="image_gen_height" value=512><br>
+                        seed <input type="number" class="num-input" min="-1" step=1 id="seed" value=4><br>
 
                         <input type="checkbox" id="image-generation-debugmode-checkbox" onchange="debugmodeCheckbox()"><label for="image-generation-debugmode-checkbox">Use Debug-Mode</label><br>
                     </div>

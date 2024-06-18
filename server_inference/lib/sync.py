@@ -18,8 +18,19 @@ class Sync():
             self.mhold = ModelHolderImageGen()
             self.mhold.load_model(self, self.dhold.inputs['model'], "float16")
 
-        image = self.mhold.model(self.dhold.inputs['prompt']).images[0] 
-        self.dhold.generated_image = [image]
+        output = self.mhold.model(
+            prompt = self.dhold.inputs['prompt'],
+            width = int(self.dhold.inputs['width']),
+            height = int(self.dhold.inputs['height']),
+            num_inference_steps = int(self.dhold.inputs['steps']),
+            guidance_scale = float(self.dhold.inputs['cfg']),
+            negative_prompt = self.dhold.inputs['prompt_neg'],
+            num_images_per_prompt = int(self.dhold.inputs['batch_size']),
+            clip_skip = int(self.dhold.inputs['clip_skip']),
+            return_dict = True
+        )
+        print("image gen output:\n", output)
+        self.dhold.generated_image = output['images']
 
         
 
