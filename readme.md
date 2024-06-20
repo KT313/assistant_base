@@ -9,6 +9,7 @@ working:
 - support for probably all **transformer**, **llama-cpp** and **exllamav2** models
 - image input support for Llama-3-Llava & phi-3-vision (transformers) 
 - custom adaptive beam search
+- image-generation with **diffusers** backend
 
 WIP:
 - Agent Task Mode (Structuring large / complicated tasks and progressively working on it)
