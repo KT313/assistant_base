@@ -84,6 +84,23 @@ def send_user_msg_helper(request_json):
     ]
     return json.dumps({'status': 'success', 'returned_content': returned_content, 'info': info})
 
+def send_user_msg_image_gen_helper(request_json):
+    data = request_json
+
+    url = f"http://127.0.0.1:10000/image_gen"
+    data_to_send = request_json
+    response = requests.post(url, json=data_to_send)   
+    print("response:")
+    for key, val in response.json().items():
+        print(f"{key}: {type(val)}")
+
+    
+    if response.json()['status'] == "error":
+        print(response.json()['error-info'])
+        return json.dumps(response.json())
+    
+    return json.dumps(response.json())
+
 
 
 @app.route('/')
@@ -100,6 +117,11 @@ def get_init_text():
 @check_api_key
 def send_user_msg():
     return send_user_msg_helper(request.get_json())
+
+@app.route('/send_user_msg_image_gen', methods=['POST'])
+@check_api_key
+def send_user_msg_image_gen():
+    return send_user_msg_image_gen_helper(request.get_json())
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=14000, debug=True)

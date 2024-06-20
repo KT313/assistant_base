@@ -1,15 +1,46 @@
 from .imports import *
 from .model_holder import ModelHolder
+from .model_holder_image import ModelHolder as ModelHolderImageGen
 from .data_holder import DataHolder
 from .misc import softmax, find_top_indexes
 from .processor_helper import ProcessorHelper
 
 class Sync():
-    def __init__(self, config=None):
+    def __init__(self, config=None, mode=None):
         self.mhold = None
         self.dhold = None
+        self.mode = mode
         self.phelp = ProcessorHelper()
         self.config = config
+
+    def generate_image(self):
+        try:
+            if self.mhold == None or self.mhold.current_model != self.dhold.inputs['model']:
+                self.mhold = ModelHolderImageGen()
+                self.mhold.load_model(self, self.dhold.inputs['model'], "float16")
+    
+            self.dhold.start_time_inference = time.time()
+            output = self.mhold.model(
+                prompt = self.dhold.inputs['prompt'],
+                width = int(self.dhold.inputs['width']),
+                height = int(self.dhold.inputs['height']),
+                num_inference_steps = int(self.dhold.inputs['steps']),
+                guidance_scale = float(self.dhold.inputs['cfg']),
+                negative_prompt = self.dhold.inputs['prompt_neg'],
+                num_images_per_prompt = int(self.dhold.inputs['batch_size']),
+                clip_skip = int(self.dhold.inputs['clip_skip']),
+                generator = torch.Generator(device="cuda").manual_seed(int(self.dhold.inputs['seed'])), # seed
+                return_dict = True
+            )
+            print("image gen output:\n", output)
+            self.dhold.generated_image = output['images']
+            
+        except Exception as e:
+            print(e)
+            self.dhold.error = True
+            self.dhold.error_info = str(e)
+
+        
 
     def prep_gen_inputs(self):
         """
@@ -73,6 +104,9 @@ class Sync():
         self.phelp.inference_check_stop_token_and_alternative_inputs(self)
 
         self.phelp.inference_do_inference(self)
+        if self.dhold.error:
+            self.dhold.beamsearch_break = True # just in case of beam-search
+            return None
 
         if self.dhold.inputs['beam_config']['use_beam_search']:
             self.phelp.inference_get_considered_tokens_num(self)
@@ -160,3 +194,12 @@ class Sync():
 
     def make_new_mhold(self):
         self.mhold = ModelHolder()
+
+    def change_mode(self, new_mode):
+        if new_mode == "assistant":
+            config = json.loads(open("config.json", "r").read())
+        elif new_mode == "image_gen":
+            config = json.loads(open("config_image.json", "r").read())
+        self.__init__(mode=new_mode, config=config)
+        gc.collect()
+        torch.cuda.empty_cache()

@@ -120,13 +120,14 @@ class Exllamav2Helper(BaseHelper):
             top_p = 0.0,
             top_k = 1
         )
-
+        
 
         for idx, inputs_entry in enumerate(inputs):
             job = ExLlamaV2DynamicJob(
                 input_ids = inputs_entry.unsqueeze(0).cpu(), # todo make it so no need for moving to cpu
+                # min_new_tokens = self.sync.dhold.max_tokens_this_gen,
                 max_new_tokens = self.sync.dhold.max_tokens_this_gen,
-                stop_conditions = self.stop_token.tolist(),
+                stop_conditions = self.stop_token.tolist(), # if self.sync.dhold.inputs['beam_config']['use_beam_search'] else None,
                 gen_settings = gen_settings,
                 identifier = idx,
                 return_top_tokens = self.sync.dhold.inputs['max_num_beams'],
@@ -140,7 +141,7 @@ class Exllamav2Helper(BaseHelper):
         # Somewhere to store the streaming results
         collected_outputs = [""] * inputs.shape[-1]
 
-        logits_merker = []
+        logits_merker = {}
         text_merker = []
         tokens_merker = []
         
@@ -148,30 +149,47 @@ class Exllamav2Helper(BaseHelper):
         while self.generator.num_remaining_jobs():
             stop_generation = False
             job_counter += 1
-            
-            merker = []
-            
+                        
             results = self.generator.iterate()
-            
-            
+            results = [result for result in results if result['stage'] == "streaming"]
+
             for result in results:
-                
+                serial = result['serial']
+                if serial not in logits_merker:
+                    logits_merker[serial] = []
                 if "logits" in result:
-                    merker.append(result['logits'])
-            if merker != []:
-                logits_merker.append(torch.concatenate(merker, dim=0))
-            
+                    logits_merker[serial].append(result['logits'])
+                elif result['eos_reason'] == "stop_token":
+                    eos_token_logits = torch.zeros((1, 1, 128256))
+                    eos_token_logits[0, 0, self.tokenizer.eos_token_id] = 1
+                    logits_merker[serial].append(eos_token_logits)
 
-        self.generator.active_jobs = []
-        logits = torch.concatenate(logits_merker, dim=-2)
 
-        top_logits = find_top_indexes(self.sync, logits)
+
         
 
+        self.generator.active_jobs = []
 
+        beams = [torch.concatenate(val, dim=-2) for key, val in logits_merker.items()]
 
+        # truncate all beams to the shortest beam length
+        min_length = beams[0].shape[-2]
+        for index, beam in enumerate(beams):
+            if beams[index].shape[-2] < min_length:
+                min_length = beams[index].shape[-2]
+
+        for index, beam in enumerate(beams):
+            if beams[index].shape[-2] > min_length:
+                beams[index] = beams[index][:, :min_length, :]
+        
+        logits = torch.concatenate(beams, dim=0)
+
+        top_logits = find_top_indexes(self.sync, logits)
+
+        
         tokens_decoded_merker = self.decode(top_logits[:, :, 0, 0].to(torch.int32))
         output_shape = logits.shape[:2]
+        
         
         output = GenerateOutputDict(
             decoded_output = [["".join(entry) for entry in tokens_decoded_merker]],

@@ -15,6 +15,8 @@
     </nav>
 
     <div id="content">
+
+        <!-- Assistant area -->
         <div id="assistant" class="tab-content active">
             <div style="display: flex; align-items: start;">
                 <div id="main-area">
@@ -43,26 +45,23 @@
                         <a class="clear-chat-button" onclick="clearChat()"><span></span>Clear Chat</a><br>
                         <div class="change-model-button">
                             <select id="modelSelector" onchange="changeModelOpen()">
-                                <!-- <option value="Hermes-2-Theta-Llama-3-8B">Change Model</option> -->
                                 <option value="Hermes-2-Theta-Llama-3-8B">Hermes-2-Theta-Llama-3-8B</option>
-                                <option value="test">test</option>
-                                <option value="llama3-llava-next-8b">Llama3-llava-next-8b</option>
-                                <!-- <option value="paligemma-3b-mix-448">paligemma-3b-mix-448</option> -->
-                                <option value="Meta-Llama-3-70B-Instruct-IQ2_S">Llama-3-70B-Instruct-IQ2_S</option>
-                                <option value="Meta-Llama-3-70B-Instruct-IQ1_M">Llama-3-70B-Instruct-IQ1_M</option>
-                                <!-- <option value="phi-3-mini-128k-instruct">Phi-3-mini-128k-instruct</option> -->
-                                <!-- <option value="phi-3-medium-128k-instruct">Phi-3-medium-128k-instruct</option> -->
-                                <option value="phi-3-vision-128k-instruct">Phi-3-vision-128k-instruct</option>
+                                <option value="Meta-Llama-3-8B-Instruct-6.0bpw-h6-exl2">Llama-3-8B-6.0bpw-exl2</option>
+                                <option value="Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2">Llama-3-70B-2.25bpw-exl2</option>
+                                <option value="llama3-llava-next-8b">Llama-3-llava-8b</option>
+                                <option value="Meta-Llama-3-70B-Instruct-IQ2_S">Llama-3-70B-IQ2_S</option>
+                                <option value="Meta-Llama-3-70B-Instruct-IQ1_M">Llama-3-70B-IQ1_M</option>
+                                <option value="phi-3-vision-128k-instruct">Phi-3-vision</option>
                             </select>
-                        </div><br>
+                        </div>
+                        <br>
                         <input type="checkbox" id="moreinfo-checkbox" onchange="moreInfoCheckbox()"><label for="moreinfo-checkbox">Show more info</label><br>
                         <input type="checkbox" id="usefunctions-checkbox" onchange="usefunctionsCheckbox()"><label for="usefunctions-checkbox">Use Functions</label><br>
                         <input type="checkbox" id="usevoiceinput-checkbox" onchange="usevoiceinputCheckbox()"><label for="usevoiceinput-checkbox">Use Voice Input (WIP)</label><br>
                         <input type="checkbox" id="usevoiceoutput-checkbox" onchange="usevoiceoutputCheckbox()"><label for="usevoiceoutput-checkbox">Use Voice Output (WIP)</label><br>
                         <input type="checkbox" id="allowimagegen-checkbox" onchange="allowimagegenCheckbox()"><label for="allowimagegen-checkbox">Allow Image Generation (WIP)</label><br>
                         <input type="checkbox" id="agenttaskmode-checkbox" onchange="agenttaskmodeCheckbox()"><label for="agenttaskmode-checkbox">Agent Task Mode (WIP)</label><br>
-                    </div>
-                    <br>
+                    </div><br>
                     <div id="info" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
                         <div class="text-info">
                             <span class="label">Vram: </span><span id="info-vram-used">00.00</span> / <span id="info-vram-total">00.00</span> GiB<br>
@@ -71,8 +70,7 @@
                             <span class="label">Tokens/s: </span><span id="info-tokens-per-second">0</span><br>
                             <span class="label">Total Time: </span><span id="info-total-time">0</span>s<br>
                         </div>
-                    </div>
-                    <br>
+                    </div><br>
                     <div id="additional-settings" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
                         Load model as<br>
                         <input type="radio" id="bfloat16" name="model-dtype" value="bfloat16" checked="true"><label for="bfloat16">bfloat16</label><br>
@@ -92,13 +90,71 @@
                         min_conf_for_consider (default 0.02) <input type="number" class="num-input" min="0" max="1" step=0.01 id="min_conf_for_consider" value=0.02><br>
                         prob_sum_for_search (default 0.98) <input type="number" class="num-input" min="0" max="1" step=0.01 id="prob_sum_for_search" value=0.98><br>
                     </div>
+                    <div id="log" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
+                        <div id="display-log">Log</div>
+                        <div id="log-content" style="height: 75px; overflow-y: hidden; overflow-x: auto;"></div>
+                    </div>
                 </div>
             </div>
             
         </div>
 
+        <!-- Image Generation area -->
         <div id="image-generation" class="tab-content">
-            <!-- Content for the Image Generation tab goes here -->
+            <div style="display: flex; align-items: start;">
+                <div id="image-generation-main-area">
+                    <div id="image-generation-output" style="background: #fff; width: 416px; height:608px; overflow:hidden;"></div>
+                    <span>Positive:</span><br>
+                    <textarea type="text" class="user-input" style="height:64px" id="image-generation-user-input" placeholder="Type your text here...">closeup portrait of a cute little cat sitting on a childs desk next to a window, pens on desk, autumn trees outside the window, cloudy weather, super cute, black cat, cute big eyes, comfy atmosphere, perfect lighting, sunset, golden hour, funny, high quality, beautiful, detailed, professional photography</textarea><br>
+                    <span>Negative (optional):</span><br>
+                    <textarea type="text" class="user-input" id="image-generation-user-input-negative" placeholder="Type your text here...">disfigured, bad anatomy, low quality, blurry, low resolution, bad quality</textarea><br>
+                    <div class="spin" id="image-generation-loading-animation" style="display: none;">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                </div>
+                <div id="sidebar">
+                    <div id="settings" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
+                        <div class="change-model-button">
+                            <select id="image-generation-modelSelector" onchange="changeModelOpen()">
+                                <option value="SD-XL-JuggernautX">SD-XL-JugX</option>
+                                <option value="SD-1.5-base">SD-1.5-base</option>
+                            </select>
+                        </div>
+                        <br>
+                    </div><br>
+                    <div id="info" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
+                        <div class="text-info">
+                            <span class="label">Vram: </span><span id="image-info-vram-used">00.00</span> / <span id="image-info-vram-total">00.00</span> GiB<br>
+                            <span class="label">Input Tokens: </span><span id="image-info-input-tokens">0</span><br>
+                            <span class="label">iter/s: </span><span id="image-info-iterations-per-second">0</span><br>
+                            <span class="label">img/s: </span><span id="image-info-images-per-second">0</span><br>
+                            <span class="label">Total Time: </span><span id="image-info-total-time">0</span>s<br>
+                        </div>
+                    </div><br>
+                    <div id="additional-settings" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
+                        Sampler 
+                        <select id="samplerSelector" onchange="changeModelOpen()">
+                             <option value="Euler">Euler</option>
+                        </select>
+                        CFG <input type="number" class="num-input" min="0" step=0.25 id="cfg" value=3><br>
+                        steps <input type="number" class="num-input" min="0" step=1 id="steps" value=40><br>
+                        clip-skip <input type="number" class="num-input" min="0" step=1 id="clip-skip" value=0><br>
+                        batch_size <input type="number" class="num-input" min="0" step=1 id="image_gen_batch_size" value=1><br>
+                        resolution (w x h) <input type="number" class="num-input" min="8" step=8 id="image_gen_width" value=832> x <input type="number" class="num-input" min="8" step=8 id="image_gen_height" value=1216><br>
+                        seed <input type="number" class="num-input" style="width:100px;" min="-1" step=1 id="seed" value=314575><br>
+
+                        <input type="checkbox" id="image-generation-debugmode-checkbox" onchange="debugmodeCheckbox()"><label for="image-generation-debugmode-checkbox">Use Debug-Mode</label><br>
+                    </div>
+                    <div id="image-log" style="margin: 0px; width: 400px; border: 1px solid #00000044; margin-left: 40px; margin-top: 15px;">
+                        <div id="image-display-log">Log</div>
+                        <div id="image-log-content" style="height: 75px; overflow-y: hidden; overflow-x: auto;"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="training" class="tab-content">

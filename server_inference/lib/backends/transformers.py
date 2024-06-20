@@ -27,21 +27,26 @@ class TransformersHelper(BaseHelper):
         output: EncodeOutputDict containing 
                 2D tensor of (batch, tokens) and mask for it
         """
-
+        
         if images != None and len(images) >= 1:
+            if self.sync.dhold.inputs['debugmode']: print("found images to encode")
             if self.sync.mhold.current_model == "llama3-llava-next-8b":
                 from transformers import AutoProcessor
+                from llava.mm_utils import tokenizer_image_token
 
                 processor = AutoProcessor.from_pretrained(self.sync.config['models'][self.sync.mhold.current_model]['path'], trust_remote_code=True)
                 tokenizer_output = processor(inputs, images, return_tensors="pt").to(self.sync.config['torch_device'])
+
+                input_ids = tokenizer_image_token(inputs, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(self.sync.config['torch_device'])
                 
 
                 output = EncodeOutputDict(
-                    ids = tokenizer_output.input_ids,
-                    mask = torch.ones_like(tokenizer_output.input_ids, device=self.sync.config['torch_device']),
-                    images = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None,
+                    ids = input_ids,
+                    mask = tokenizer_output.attention_mask,
+                    images = [tokenizer_output.pixel_values.to(torch.float16)],
                     image_sizes = [image.size for image in images]
                 )
+                if self.sync.dhold.inputs['debugmode']: print("encoded images for llama3-llava")
                 
             elif self.sync.mhold.current_model == "phi-3-vision-128k-instruct":
                 from transformers import AutoProcessor
@@ -55,6 +60,8 @@ class TransformersHelper(BaseHelper):
                     pixel_values = tokenizer_output.pixel_values if "pixel_values" in tokenizer_output else None,
                     image_sizes = tokenizer_output.image_sizes if "image_sizes" in tokenizer_output else None
                 )
+                if self.sync.dhold.inputs['debugmode']: print("encoded images for phi-3-vision")
+                
             else:
                 # not vision capable model, ignore images
                 encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
@@ -113,7 +120,6 @@ class TransformersHelper(BaseHelper):
         # make sure inputs tensor is 2D
         if inputs.ndim == 1:
             inputs = inputs.unsqueeze(0)
-        
         
         out = self.model.generate(inputs, **kwargs)
 

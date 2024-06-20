@@ -1,0 +1,19 @@
+{
+    "models": {
+        "SD-1.5-base": {
+            "name": "SD-1.5-base",
+            "path": "/home/tobi/ai/models/text_to_image/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+            "backend": "diffusers",
+            "base_model": "SD-1.5"
+        },
+        "SD-XL-JuggernautX": {
+            "name": "SD-XL-JuggernautX",
+            "path": "/home/tobi/ai/models/text_to_image/juggernautXL_juggernautX.safetensors",
+            "backend": "diffusers",
+            "base_model": "SD-XL"
+        }
+    },
+    "torch_device": "cuda",
+    "torch_device_map": "cuda",
+    "torch_cuda_garbage_collection_threshold": 0.01
+}
