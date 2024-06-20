@@ -27,12 +27,6 @@
         }
     },
     "models": {
-        "SD-1.5-base": {
-            "name": "Stable-Diffusion-1.5-base",
-            "path": "/home/tobi/ai/models/text_to_image/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-            "template": "-",
-            "backend": "diffusers"
-        },
         "Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2": {
             "name": "Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2",
             "path": "/home/tobi/ai/models/text_to_text/exllamav2/Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2",

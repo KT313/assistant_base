@@ -66,6 +66,14 @@ def get_generation_stats(dhold):
 
     dhold.available_mem, dhold.total_mem = torch.cuda.mem_get_info()
 
+def get_generation_stats_image(dhold):
+    # in case visual tokens have a separate tensor
+    dhold.total_time_taken = round(time.time() - dhold.start_time_total, 2)
+    dhold.images_per_second = np.round(len(dhold.generated_image)/(time.time() - dhold.start_time_inference), 2)
+    dhold.iterations_per_second = np.round((len(dhold.generated_image)*int(dhold.inputs['steps']))/(time.time() - dhold.start_time_inference), 2)
+
+    dhold.available_mem, dhold.total_mem = torch.cuda.mem_get_info()
+
 def to_GiB(val):
     return round(val/(1024**3), 2)
 
@@ -105,9 +113,9 @@ def make_output_dict_image_gen_str(sync, show_info=False):
     if show_info:
         print("dhold.returned_content:", dhold.returned_content, flush=True)
 
-    # get_generation_stats(dhold)
+    get_generation_stats_image(dhold)
     
-    dhold.output_dict = json.dumps({'status': 'success', 'generated_image': [encode_image_to_base64(img)for img in dhold.generated_image], 'info': {}}, default=str)
+    dhold.output_dict = json.dumps({'status': 'success', 'generated_image': [encode_image_to_base64(img)for img in dhold.generated_image], 'info': {'mem_used':to_GiB(dhold.total_mem-dhold.available_mem), 'mem_total':to_GiB(dhold.total_mem), 'total_time_taken': dhold.total_time_taken, 'images_per_second': dhold.images_per_second, 'iterations_per_second': dhold.iterations_per_second}}, default=str)
     
 
 def prep_for_new_gen(sync, request_json, show_info=False):

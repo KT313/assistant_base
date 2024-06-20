@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function fetchInitText() {
-    var url = 'http://80.138.246.203:14000/get_init_text'
+    var url = `http://${window.location.hostname}:14000/get_init_text`
     try {
         if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
     } catch {}
@@ -116,7 +116,7 @@ function sendUserMsg() {
         return base64Data;
     });
     
-    var url = 'http://80.138.246.203:14000/send_user_msg'
+    var url = `http://${window.location.hostname}:14000/send_user_msg`
     try {
         if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
     } catch {}
@@ -352,7 +352,7 @@ function sendUserMsgImageGen() {
     const image_gen_height_selector = document.getElementById('image_gen_height').value;
     const seed_selector = document.getElementById('seed').value;
     
-    var url = 'http://80.138.246.203:14000/send_user_msg_image_gen'
+    var url = `http://${window.location.hostname}:14000/send_user_msg_image_gen`
     try {
         if (document.apiKey) {url = url + `?api_key=${document.apiKey}`;}
     } catch {}
@@ -391,7 +391,7 @@ function sendUserMsgImageGen() {
             var minutes = String(currentdate.getMinutes()).padStart(2, '0');
             var seconds = String(currentdate.getSeconds()).padStart(2, '0');
             var formattedContent = `<div style="display: flex; white-space: pre-wrap; overflow: auto;"><span style="flex-shrink: 0;">${hour + ':' + minutes + ':' + seconds + ' ' + data['error-info']}</span></div>`;
-            document.getElementById('log-content').innerHTML = formattedContent + document.getElementById('log-content').innerHTML;
+            document.getElementById('image-log-content').innerHTML = formattedContent + document.getElementById('image-log-content').innerHTML;
         } else {
             if ('generated_image' in data) {
                 console.log("should show image now");
@@ -415,6 +415,11 @@ function sendUserMsgImageGen() {
                 });
             }
             if ('info' in data) {
+                document.getElementById('image-info-vram-used').innerHTML = data.info.mem_used;
+                document.getElementById('image-info-vram-total').innerHTML = data.info.mem_total;
+                document.getElementById('image-info-iterations-per-second').innerHTML = data.info.iterations_per_second;
+                document.getElementById('image-info-images-per-second').innerHTML = data.info.images_per_second;
+                document.getElementById('image-info-total-time').innerHTML = data.info.total_time_taken;
                 /*
                 document.getElementById('info-vram-used').innerHTML = data.info.mem_used;
                 document.getElementById('info-vram-total').innerHTML = data.info.mem_total;
