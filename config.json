@@ -8,6 +8,14 @@
             "image token": "<image>\n",
             "end text": "<|eot_id|>"
         },
+        "gemma-2": {
+            "init": "<bos>",
+            "roles as string": true,
+            "role start": "<start_of_turn>",
+            "role end": "\n",
+            "image token": "<image>\n",
+            "end text": "<end_of_turn>\n"
+        },
         "hermes-2": {
             "init": "",
             "roles as string": true,
@@ -27,6 +35,13 @@
         }
     },
     "models": {
+        "gemma-2-9b": {
+            "name": "gemma-2-9b",
+            "path": "/home/tobi/ai/models/text_to_text/gemma-2-9b-it",
+            "template": "gemma-2",
+            "backend": "transformers",
+            "image-capable": false
+        },
         "Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2": {
             "name": "Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2",
             "path": "/home/tobi/ai/models/text_to_text/exllamav2/Meta-Llama-3-70B-Instruct-2.25bpw-h6-exl2",

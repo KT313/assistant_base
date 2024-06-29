@@ -159,7 +159,7 @@ class Exllamav2Helper(BaseHelper):
                     logits_merker[serial] = []
                 if "logits" in result:
                     logits_merker[serial].append(result['logits'])
-                elif result['eos_reason'] == "stop_token":
+                elif 'eos_reason' in result and result['eos_reason'] == "stop_token":
                     eos_token_logits = torch.zeros((1, 1, 128256))
                     eos_token_logits[0, 0, self.tokenizer.eos_token_id] = 1
                     logits_merker[serial].append(eos_token_logits)

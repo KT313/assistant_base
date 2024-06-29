@@ -41,17 +41,33 @@ class ProcessorHelper():
         prompt_string = ""
         prompt_string += template['init']
 
+        index_last_user_msg = 0
+        index_last_assistant_msg = 0
+        for i in range(len(sync.dhold.inputs['chat'])-1, -1, -1):
+            if sync.dhold.inputs['chat'][i]['role'] == "user":
+                index_last_user_msg = i
+                break
+        for i in range(len(sync.dhold.inputs['chat'])-1, -1, -1):
+            if sync.dhold.inputs['chat'][i]['role'] == "assistant":
+                index_last_assistant_msg = i
+                break
+            
+
         if template['roles as string']:
             for index, entry in enumerate(sync.dhold.inputs['chat']):
                 image_string = ""
-                if index == (len(sync.dhold.inputs['chat'])-1) and len(sync.dhold.inputs['images']) > 0:
+                if index == index_last_user_msg and len(sync.dhold.inputs['images']) > 0:
                     image_string = template['image token']
-                prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{image_string}{entry['content']}{template['end text']}"
-            prompt_string += f"{template['role start']}assistant{template['role end']}"
+                if index == (len(sync.dhold.inputs['chat'])-1) and index == index_last_assistant_msg:
+                    prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{entry['content']}"
+                else:
+                    prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{image_string}{entry['content']}{template['end text']}"
+            if index_last_user_msg > index_last_assistant_msg:
+                prompt_string += f"{template['role start']}assistant{template['role end']}"
         else:
             for index, entry in enumerate(sync.dhold.inputs['chat']):
                 image_string = ""
-                if index == (len(sync.dhold.inputs['chat'])-1) and len(sync.dhold.inputs['images']) > 0:
+                if index == index_last_user_msg and len(sync.dhold.inputs['images']) > 0:
                     image_string = template['image token']
                 if entry['role'] == "system":
                     role_token = template['system role']
@@ -59,8 +75,12 @@ class ProcessorHelper():
                     role_token = template['user role']
                 elif entry['role'] == "assistant":
                     role_token = template['ai role']
-                prompt_string += f"{role_token}{image_string}{entry['content']}{template['end text']}"
-            prompt_string += f"{template['ai role']}"
+                if index == (len(sync.dhold.inputs['chat'])-1) and index == index_last_assistant_msg:
+                    prompt_string += f"{role_token}{entry['content']}"
+                else:
+                    prompt_string += f"{role_token}{image_string}{entry['content']}{template['end text']}"
+            if index_last_user_msg > index_last_assistant_msg:
+                prompt_string += f"{template['ai role']}"
 
         sync.dhold.prompt_string = prompt_string
         if sync.dhold.inputs['debugmode']: print(f"built prompt string:\n\"{sync.dhold.prompt_string}\"")
@@ -83,6 +103,7 @@ class ProcessorHelper():
 
         
         tokenizer_output = sync.mhold.helper.encode(sync.dhold.prompt_string, images=sync.dhold.inputs['images'])
+        print("tokenizer out ids:", tokenizer_output['ids'])
         del sync.dhold.inputs['images']
         for key, val in tokenizer_output.additional_data.items():
             sync.dhold.inputs[key] = val
