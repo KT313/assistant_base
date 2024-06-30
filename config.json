@@ -14,7 +14,9 @@
             "role start": "<start_of_turn>",
             "role end": "\n",
             "image token": "<image>\n",
-            "end text": "<end_of_turn>\n"
+            "end text": "<end_of_turn>\n",
+            "user role": "user",
+            "ai role": "model"
         },
         "hermes-2": {
             "init": "",

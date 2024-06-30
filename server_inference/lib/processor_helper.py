@@ -27,6 +27,7 @@ class ProcessorHelper():
         sync.dhold.inputs['chat'] = [chat for chat in sync.dhold.inputs['chat'] if chat['role'] != "System"]
         for i in range(len(sync.dhold.inputs['chat'])):
             old_role = sync.dhold.inputs['chat'][i]['role']
+            
             if old_role == "User": sync.dhold.inputs['chat'][i]['role'] = "user"
             if old_role == "AI": sync.dhold.inputs['chat'][i]['role'] = "assistant"
 
@@ -40,6 +41,18 @@ class ProcessorHelper():
 
         prompt_string = ""
         prompt_string += template['init']
+
+        user_role = template['user role'] if "user role" in template else "user"
+        ai_role = template['ai role'] if "ai role" in template else "assistant"
+
+        def convert_role(role):
+            if role == "user":
+                new_role_name = user_role
+            elif role == "assistant":
+                new_role_name = ai_role
+            else:
+                new_role_name = role
+            return new_role_name
 
         index_last_user_msg = 0
         index_last_assistant_msg = 0
@@ -59,9 +72,9 @@ class ProcessorHelper():
                 if index == index_last_user_msg and len(sync.dhold.inputs['images']) > 0:
                     image_string = template['image token']
                 if index == (len(sync.dhold.inputs['chat'])-1) and index == index_last_assistant_msg:
-                    prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{entry['content']}"
+                    prompt_string += f"{template['role start']}{convert_role(entry['role'])}{template['role end']}{entry['content']}"
                 else:
-                    prompt_string += f"{template['role start']}{entry['role']}{template['role end']}{image_string}{entry['content']}{template['end text']}"
+                    prompt_string += f"{template['role start']}{convert_role(entry['role'])}{template['role end']}{image_string}{entry['content']}{template['end text']}"
             if index_last_user_msg > index_last_assistant_msg:
                 prompt_string += f"{template['role start']}assistant{template['role end']}"
         else:
