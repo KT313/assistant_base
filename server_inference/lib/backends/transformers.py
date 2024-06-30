@@ -73,7 +73,7 @@ class TransformersHelper(BaseHelper):
 
         else:
         
-            encoded_ids = self.tokenizer(inputs, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
+            encoded_ids = self.tokenizer(inputs, add_special_tokens=False, return_tensors="pt").input_ids.to(self.sync.config['torch_device'])
         
             output = EncodeOutputDict(
                 ids = encoded_ids,

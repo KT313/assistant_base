@@ -12,7 +12,7 @@ import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM, BitsAndBytesConfig, AutoProcessor, PaliGemmaForConditionalGeneration, GPTQConfig
 from exllamav2 import ExLlamaV2, ExLlamaV2Config, ExLlamaV2Cache, ExLlamaV2Tokenizer
 from exllamav2.generator import ExLlamaV2Sampler, ExLlamaV2DynamicGenerator, ExLlamaV2BaseGenerator
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from scipy.special import softmax
 from typing import Union, List
 from llama_cpp import Llama

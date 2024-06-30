@@ -51,7 +51,7 @@ class ModelHolder():
             
         elif backend in ["transformers"]:
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained, trust_remote_code=False, padding_side='left')
-            self.model = LlamaForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, attn_implementation="flash_attention_2")
+            self.model = AutoModelForCausalLM.from_pretrained(pretrained, torch_dtype=torch_dtype, device_map=sync.config['torch_device_map'], quantization_config=bnb_config, attn_implementation="flash_attention_2")
             
             
         elif backend in ["llama-cpp"]:
