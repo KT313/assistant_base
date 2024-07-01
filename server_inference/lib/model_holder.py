@@ -55,7 +55,15 @@ class ModelHolder():
             
             
         elif backend in ["llama-cpp"]:
-            self.model = Llama(model_path=pretrained, n_gpu_layers=-1, n_ctx=1024, verbose=False, logits_all=True, flash_attn=True)
+            self.model = Llama(
+                model_path=pretrained, 
+                # tensor_split=[1.0],
+                n_gpu_layers=-1 if "num_gpu_layers" not in sync.config['models'][model_name] else sync.config['models'][model_name]['num_gpu_layers'], 
+                n_ctx=4096, 
+                verbose=True, 
+                logits_all=True if sync.dhold.inputs['beam_config']['use_beam_search'] else False, 
+                flash_attn=True
+            )
 
 
         elif backend in ["exllamav2"]:

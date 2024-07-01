@@ -1,5 +1,5 @@
 from .base import *
-
+import time
 
 class LlamacppHelper(BaseHelper):
 
@@ -96,13 +96,23 @@ class LlamacppHelper(BaseHelper):
             
         # need to process batches sequentially
         out_merker = []
-
+        start_time = time.time()
+        print("start gen")
         for entry in inputs:
             entry_out = self.model(entry.tolist(), **kwargs)
             out_merker.append(entry_out)
+        print("end gen after", time.time()-start_time)
 
         
-
+        if not self.sync.dhold.inputs['beam_config']['use_beam_search']:
+            output = GenerateOutputDict(
+                decoded_output = [[out_merker[0]['choices'][0]['text']]],
+                output_shape = [0, 0],
+                logits = None,
+                top_logits = None,
+                stopped = None
+            )
+            return output
         decoded = []
         for entry in out_merker:
             decoded.append(entry['choices'][0]['text'])

@@ -219,7 +219,7 @@ class ProcessorHelper():
 
 
             
-        if sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ2_S" or sync.dhold.inputs['model'] == "Meta-Llama-3-70B-Instruct-IQ1_M":
+        if sync.mhold.backend == "llama-cpp":
             for key in ["max_new_tokens", "do_sample", "output_scores", "return_dict_in_generate", "eos_token_id"]:
                 try:
                     del sync.dhold.gen_kwargs[key]
@@ -232,7 +232,7 @@ class ProcessorHelper():
                 'stop': ["<|eot_id|>"],
                 'echo': False,
                 'top_k': 1,
-                'logprobs': -1,
+                'logprobs': -1 if sync.dhold.inputs['beam_config']['use_beam_search'] else None,
             })
 
 
@@ -268,11 +268,13 @@ class ProcessorHelper():
     
                 sync.dhold.returned_content = generation_dict['decoded_output']
                 sync.dhold.output_shape = generation_dict['output_shape']
-                sync.dhold.logits = generation_dict['top_logits']
-    
-                sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
-    
+
                 if sync.dhold.inputs['beam_config']['use_beam_search']:
+                    
+                    sync.dhold.logits = generation_dict['top_logits']
+                    sync.dhold.stopped = [False for _ in range(sync.dhold.inputs['max_num_beams'])]
+        
+                    
                     if "stopped" in generation_dict:
                         sync.dhold.stopped = generation_dict['stopped']
         

@@ -9,3 +9,6 @@ __pycache__
 **/__pycache__
 **/**/__pycache__
 allowed_keys.json
+agent.ipynb
+lib_agent/*
+Untitled.ipynb

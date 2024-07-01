@@ -18,6 +18,16 @@
             "user role": "user",
             "ai role": "model"
         },
+        "qwen-2": {
+            "init": "",
+            "roles as string": true,
+            "role start": "<|im_start|>",
+            "role end": "\n",
+            "image token": "<image>\n",
+            "end text": "<|im_end|>\n",
+            "user role": "user",
+            "ai role": "assistant"
+        },
         "hermes-2": {
             "init": "",
             "roles as string": true,
@@ -37,6 +47,14 @@
         }
     },
     "models": {
+        "qwen2-72b-instruct-q4_k_m": {
+            "name": "qwen2-72b-instruct-q4_k_m",
+            "path": "/home/tobi/ai/models/text_to_text/qwen2-72b-instruct-q4_k_m.gguf",
+            "template": "qwen-2",
+            "backend": "llama-cpp",
+            "num_gpu_layers": 36,
+            "image-capable": false
+        },
         "gemma-2-9b": {
             "name": "gemma-2-9b",
             "path": "/home/tobi/ai/models/text_to_text/gemma-2-9b-it",
